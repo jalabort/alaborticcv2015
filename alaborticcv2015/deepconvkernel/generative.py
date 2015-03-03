@@ -81,7 +81,7 @@ class GenerativeDCKArch1():
         if verbose:
             string = '- Learning network'
         # extract centres
-        centres = [i.landmarks[group][label] for i in images]
+        centres = [i.landmarks[group][label].copy() for i in images]
         # initialize level_image and list of filters
         level_images = images
         self.filters = []
@@ -129,7 +129,7 @@ class GenerativeDCKArch1():
         # extend image
         ext_image = pad(image.pixels, ext_shape, mode=self.padding)
         # compute extended image fft
-        fft_ext_image = fftshift(fft2(ext_image), axes=(-2, -1))
+        fft_ext_image = fft2(ext_image)
 
         # initialize response
         response = np.zeros(r_shape)
@@ -137,21 +137,19 @@ class GenerativeDCKArch1():
             # extend filter
             ext_f = pad(f.pixels, ext_shape, mode=self.padding)
             # compute extended filter fft
-            fft_ext_f = fftshift(fft2(ext_f), axes=(-2, -1))
+            fft_ext_f = fft2(ext_f)
             # compute filter response
             fft_ext_r = np.sum(fft_ext_f * fft_ext_image, axis=0)
             # compute inverse fft of the filter response
-            r = np.real(ifftshift(ifft2(ifftshift(fft_ext_r,
-                                                 axes=(-2, -1))),
-                                 axes=(-2, 1)))[None]
+            r = np.real(ifftshift(ifft2(fft_ext_r), axes=(-2, 1)))[None]
             if self.crop:
                 r = unpad(r, image.shape)
-            else:
-                if centre:
-                    centre.points += np.asarray((filters[0].shape[0] - 1,
-                                                 filters[0].shape[1] - 1))
+
             # fill out overall response
             response[j] = r
+
+        if centre and not self.crop:
+            centre.points += np.asarray(ext_shape) - np.asarray(image.shape)
 
         # transform response to Image and return it
         return Image(response)
@@ -169,7 +167,7 @@ class GenerativeDCKArch1():
                     f_pixels = pad(f.pixels, ext_shape, mode=self.padding)
                 else:
                     f_pixels = f.pixels
-                fft_f = fftshift(fft2(f_pixels), axes=(-2, -1))
+                fft_f = fft2(f_pixels)
                 kernel += fft_f.conj() * prev_kernel[j] * fft_f
         else:
             kernel = 0
@@ -178,15 +176,17 @@ class GenerativeDCKArch1():
                     f_pixels = pad(f.pixels, ext_shape, mode=self.padding)
                 else:
                     f_pixels = f.pixels
-                fft_f = fftshift(fft2(f_pixels), axes=(-2, -1))
+                fft_f = fft2(f_pixels)
                 kernel += fft_f.conj() * fft_f
 
         return kernel
 
     def compute_network_response(self, image, level=None):
+        shape = image.shape
         for level_filters in self.filters[:level]:
             image = self._apply_filters(image, level_filters)
-        return image
+        r = unpad(image.pixels, shape)
+        return Image(r)
 
     def compute_kernel_response(self, image, level=None):
         # obtain number of channels
@@ -200,7 +200,7 @@ class GenerativeDCKArch1():
         # extend image
         ext_image = pad(image.pixels, ext_shape, mode=self.padding)
         # compute extended image fft
-        fft_ext_image = fftshift(fft2(ext_image), axes=(-2, -1))
+        fft_ext_image = fft2(ext_image)
 
         # compute deep convolutional kernel
         fft_ext_kernel = self.learn_kernel(level=level, ext_shape=ext_shape)
@@ -209,7 +209,7 @@ class GenerativeDCKArch1():
         fft_ext_r = fft_ext_kernel.pixels**0.5 * fft_ext_image
 
         # compute inverse fft of deep response
-        r = np.real(ifft2(ifftshift(fft_ext_r, axes=(-2, -1))))
+        r = np.real(ifft2(fft_ext_r))
         r = unpad(r, image.shape)
 
         return Image(r)
