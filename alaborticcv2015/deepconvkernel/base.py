@@ -1,19 +1,11 @@
 from __future__ import division
 import numpy as np
-from numpy.fft import fft2, ifft2, fftshift, ifftshift
-
+from numpy.fft import fft2, ifft2, fftshift
 import warnings
-
 from menpo.image import Image
 from menpo.feature import ndfeature
-from menpo.visualize import print_dynamic, progress_bar_str
-
 from alaborticcv2015.utils import (
-    pad, crop, fft_convolve2d_sum,
-    multiconvsum,
-    convert_images_to_dtype_inplace, extract_patches,
-    extract_patches_from_grid, extract_patches_from_landmarks,
-    centralize)
+    pad, crop, fft_convolve2d_sum)
 
 
 def parse_filter_options(learn_filters, n_filters, n_layers):
@@ -101,28 +93,51 @@ def _check_layer(layer, n_layers):
     return layer
 
 
+def _compute_kernel1(filters, ext_shape=None):
+    kernel = 1
+    for fs in filters:
+        if ext_shape is not None:
+            fs = pad(fs, ext_shape)
+        fft_fs = fft2(fs)
+        kernel *= np.sum(fft_fs.conj() * fft_fs, axis=(0, 1))
+    return np.real(kernel)
+
+
 def _compute_kernel(filters, ext_shape=None):
     if len(filters) > 1:
         prev_kernel = _compute_kernel(filters[1:], ext_shape=ext_shape)
-        kernel = 0
-        for j, f in enumerate(filters[0]):
-            if ext_shape is not None:
-                f = pad(f, ext_shape=ext_shape)
-            fft_f = fft2(f)
-            kernel += fft_f.conj() * prev_kernel[j] * fft_f
+        fs = filters[0]
+        if ext_shape is not None:
+            fs = pad(fs, ext_shape=ext_shape)
+        fft_fs = fft2(fs)
+        kernel = np.sum(fft_fs.conj() * prev_kernel[:, None, ...] * fft_fs,
+                        axis=0)
     else:
-        kernel = 0
-        for f in filters[0]:
-            if ext_shape is not None:
-                f = pad(f, ext_shape=ext_shape)
-            fft_f = fft2(f)
-            kernel += fft_f.conj() * fft_f
+        fs = filters[0]
+        if ext_shape is not None:
+            fs = pad(fs, ext_shape=ext_shape)
+        fft_fs = fft2(fs)
+        kernel = np.sum(fft_fs.conj() * fft_fs, axis=0)
     return np.real(kernel)
 
 
 @ndfeature
-def _compute_kernel_response(x, compute_kernel, filters_shape, layer=None,
-                             mode='same', boundary='constant'):
+def _network_response(x, filters, hidden_mode='same', visible_mode='same',
+                      boundary='constant'):
+    limit = len(filters) - 1
+    for j, fs in enumerate(filters):
+        if j < limit:
+            x = fft_convolve2d_sum(x, fs, mode=hidden_mode,
+                                   boundary=boundary, axis=1)
+        else:
+            x = fft_convolve2d_sum(x, fs, mode=visible_mode,
+                                   boundary=boundary, axis=1)
+    return x
+
+
+@ndfeature
+def _kernel_response(x, compute_kernel, filters_shape, layer=None,
+                     mode='same', boundary='constant'):
     # extended shape
     x_shape = np.asarray(x.shape[-2:])
     f_shape = np.asarray(filters_shape)
@@ -155,7 +170,9 @@ def _compute_kernel_response(x, compute_kernel, filters_shape, layer=None,
 
 
 class LinDeepConvNet(object):
-
+    r"""
+    Linear Deep Convolutional Network Interface
+    """
     @property
     def n_layers(self):
         return len(self._n_filters)
@@ -176,7 +193,7 @@ class LinDeepConvNet(object):
 
     @property
     def filters_shape(self):
-        return self._filters[0].shape[2:]
+        return self._filters[0].shape[-2:]
 
     def filters_spatial(self):
         filters = []
@@ -194,7 +211,8 @@ class LinDeepConvNet(object):
             for f in fs:
                 if ext_shape is not None:
                     f = pad(f, ext_shape=ext_shape)
-                level_filters.append(Image(np.abs(fftshift(fft2(f)))))
+                level_filters.append(Image(np.abs(fftshift(fft2(f),
+                                                           axes=(-2, -1)))))
             filters.append(level_filters)
         return filters
 
@@ -215,24 +233,16 @@ class LinDeepConvNet(object):
 
     def _compute_kernel(self, layer=None, ext_shape=None):
         layer = _check_layer(layer, self.n_layers)
-        return _compute_kernel(self._filters[:layer+1],
-                              ext_shape=ext_shape)
+        return _compute_kernel(self._filters[:layer+1], ext_shape=ext_shape)
 
-    def compute_network_response(self, image, layer=None, hidden_mode='same',
-                                 visible_mode='same', boundary='constant'):
+    def network_response(self, image, layer=None, hidden_mode='same',
+                         visible_mode='same', boundary='constant'):
         layer = _check_layer(layer, self.n_layers)
-        for j, fs in enumerate(self._filters[:layer+1]):
-            if j < layer:
-                image = fft_convolve2d_sum(image, fs, mode=hidden_mode,
-                                           boundary=boundary, axis=1)
-            else:
-                image = fft_convolve2d_sum(image, fs, mode=visible_mode,
-                                           boundary=boundary, axis=1)
-        return image
+        return _network_response(image, self._filters[:layer+1],
+                                 hidden_mode=hidden_mode,
+                                 visible_mode=visible_mode, boundary=boundary)
 
-    def compute_kernel_response(self, x, layer=None, mode='same',
-                                boundary='constant'):
-        return _compute_kernel_response(x, self._compute_kernel,
-                                        self.filters_shape, layer=layer,
-                                        mode=mode, boundary=boundary)
+    def kernel_response(self, x, layer=None, mode='same', boundary='constant'):
+        return _kernel_response(x, self._compute_kernel, self.filters_shape,
+                                layer=layer, mode=mode, boundary=boundary)
 
