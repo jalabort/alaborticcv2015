@@ -10,6 +10,9 @@ from menpo.feature.base import rebuild_feature_image
 from menpo.image import Image
 from menpo.shape import PointCloud
 
+# Cache the greyscale luminosity coefficients as they are invariant.
+_greyscale_luminosity_coef = None
+
 
 def pad(pixels, ext_shape, boundary='constant'):
     h, w = pixels.shape[-2:]
@@ -232,6 +235,30 @@ def normalize_std(x, channels=True, dtype=None):
     if dtype:
         x = x.astype(dtype=dtype)
     return x
+
+
+@ndfeature
+def greyscale(x, mode='luminosity', channel=None):
+    # Only compute the coefficients once.
+    if mode == 'luminosity':
+        global _greyscale_luminosity_coef
+        if _greyscale_luminosity_coef is None:
+            _greyscale_luminosity_coef = np.linalg.inv(
+                np.array([[1.0, 0.956, 0.621],
+                          [1.0, -0.272, -0.647],
+                          [1.0, -1.106, 1.703]]))[0, :]
+        x = np.einsum('i,ikl->kl', _greyscale_luminosity_coef, x)
+    elif mode == 'average':
+        x = np.mean(x, axis=0)
+    elif mode == 'channel':
+        if channel is None:
+            raise ValueError("For the 'channel' mode you have to provide"
+                             " a channel index")
+        x = x[channel, ...]
+    else:
+        raise ValueError("Unknown mode {} - expected 'luminosity', "
+                         "'average' or 'channel'.".format(mode))
+    return x[None, ...]
 
 
 def conv(i, f, mode='same', boundary='constant'):
