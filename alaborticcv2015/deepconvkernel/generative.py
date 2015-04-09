@@ -2,119 +2,267 @@ from __future__ import division
 import numpy as np
 from numpy.fft import fft2, ifft2, ifftshift
 
+import warnings
 
 from menpo.model import PCAModel, ICAModel, NMFModel
 from menpo.math.decomposition.ica import _batch_ica, negentropy_logcosh
 from menpo.image import Image
 from menpo.visualize import print_dynamic, progress_bar_str
 
-from alaborticcv2015.utils import pad, crop, multiconvsum, multiconvlist
+from menpofit.builder import normalization_wrt_reference_shape
+
+from alaborticcv2015.utils import (
+    pad, crop, fft_convolve2d, fft_convolve2d_sum,
+    multiconvsum,
+    convert_images_to_dtype_inplace, extract_patches,
+    extract_patches_from_grid, extract_patches_from_landmarks,
+    centralize)
 
 
-def learn_pca_filters(patches, n_filters=8, mean_centre=True):
-    if mean_centre:
-        new_patches = []
-        # mean centre patches
-        for p in patches:
-            pp = p.copy()
-            pp.mean_centre_inplace()
-            new_patches.append(pp)
-        patches = new_patches
+def learn_pca_filters(patches, n_filters=8, normalize=centralize, dtype=None):
+    r"""
+    Learn PCA convolution _filters
+    """
+    if normalize:
+        # normalize patches if required
+        for j, p in enumerate(patches):
+            patches[j] = normalize(p, dtype=dtype)
     # learn pca model
     pca = PCAModel(patches)
     # set active number of components
     pca.n_active_components = n_filters
-    # grab filters
-    filters = [pca.template_instance.from_vector(pc)
-               for pc in pca.components]
-    return filters
+    # obtain and return _filters
+    return [pca.template_instance.from_vector(pc) for pc in pca.components]
 
 
-def learn_ica_filters(patches, n_filters=8, mean_centre=True,
+def learn_ica_filters(patches, n_filters=8, normalize=centralize, dtype=None,
                       algorithm=_batch_ica, negentropy=negentropy_logcosh,
                       max_iters=500):
-    if mean_centre:
-        new_patches = []
-        # mean centre patches
-        for p in patches:
-            pp = p.copy()
-            pp.mean_centre_inplace()
-            new_patches.append(pp)
-        patches = new_patches
-
+    r"""
+    Learn ICA convolution _filters
+    """
+    if normalize:
+        # normalize patches if required
+        for j, p in enumerate(patches):
+            patches[j] = normalize(p, dtype=dtype)
     # learn ica model
     ica = ICAModel(patches, algorithm=algorithm, negentropy_approx=negentropy,
                    n_components=n_filters, max_iters=max_iters)
-    # grab filters
-    filters = [ica.template_instance.from_vector(ic)
-               for ic in ica.components]
-    return filters
+    # obtain and return _filters
+    return [ica.template_instance.from_vector(ic) for ic in ica.components]
 
 
 def learn_nmf_filters(patches, n_filters=8, max_iters=500, verbose=False,
                       **kwargs):
+    r"""
+    Learn NMF convolution _filters
+    """
     # learn nmf model
     nmf = NMFModel(patches, n_components=n_filters, max_iters=max_iters,
                    verbose=verbose, **kwargs)
-    # grab filters
-    filters = [nmf.template_instance.from_vector(nf)
-               for nf in nmf.components]
-    return filters
+    # obtain and return _filters
+    return [nmf.template_instance.from_vector(nf) for nf in nmf.components]
 
 
-class GenerativeDCKArch1():
+def parse_filter_options(learn_filters, n_filters, n_layers):
+    if hasattr(learn_filters, '__call__'):
+        if isinstance(n_filters, int):
+            return [[learn_filters]] * n_layers, [[n_filters]] * n_layers
+        elif isinstance(n_filters, list):
+            if len(n_filters) != n_layers:
+                warnings.warn('n_layers does not agree with n_filters, '
+                              'the number of levels will be set based on '
+                              'n_filters.')
+            return [[learn_filters]] * len(n_filters), [[n] for n in n_filters]
+    elif isinstance(learn_filters, list):
+        if len(learn_filters) == 1:
+            return parse_filter_options(learn_filters[0], n_filters, n_layers)
+        elif hasattr(learn_filters[0], '__call__'):
+            if isinstance(n_filters, int):
+                return [learn_filters] * n_layers, \
+                       [[n_filters] * len(learn_filters)] * n_layers
+            elif isinstance(n_filters, list):
+                if len(n_filters) != n_layers:
+                    warnings.warn('n_layers does not agree with n_filters, '
+                                  'the number of levels will be set '
+                                  'based on n_filters.')
+                    n_layers = len(n_filters)
+                n_list = []
+                for j, nfs in enumerate(n_filters):
+                    if isinstance(nfs, int) or len(nfs) == 1:
+                        n_list.append([nfs] * len(learn_filters))
+                    elif len(nfs) == len(learn_filters):
+                        n_list.append(nfs)
+                    else:
+                        raise ValueError('n_filters does not agree with '
+                                         'learn_filters. Position {} of '
+                                         'n_filters must be and integer, '
+                                         'a list containing a single integer '
+                                         'or a list containing the same '
+                                         'number of integers as the length of'
+                                         'learn_filters.').format(j)
+                return [learn_filters] * n_layers,  n_list
+        elif isinstance(learn_filters[0], list):
+            if len(learn_filters) != n_layers:
+                warnings.warn('n_layers does not agree with learn_filters, '
+                              'the number of levels will be set based on '
+                              'learn_filters.')
+            if len(learn_filters) == len(n_filters):
+                learn_list = []
+                n_list = []
+                for j, (lfs, nfs) in enumerate(zip(learn_filters, n_filters)):
+                    if isinstance(nfs, int) or len(nfs) == 1:
+                        lfs, nfs = parse_filter_options(lfs, nfs, 1)
+                        lfs = lfs[0]
+                        nfs = nfs[0]
+                    elif len(lfs) != len(nfs):
+                        raise ValueError('n_filters does not agree with '
+                                         'learn_filters. The total number of '
+                                         'elements in sublist {} of both '
+                                         'lists is not the same.').format(j)
+                    learn_list.append(lfs)
+                    n_list.append(nfs)
+                return learn_list, n_list
+            else:
+                raise ValueError('n_filters does not agree with learn_filters.'
+                                 ' The total number of elements in both '
+                                 'lists is not the same.')
 
-    def __init__(self, learn_filters=learn_pca_filters, n_levels=3,
-                 n_filters=8, patch_size=(7, 7), mean_centre=False,
-                 correlation=False, mode='same', boundary='constant'):
-        self._learn_filters = learn_filters
-        self.n_levels = n_levels
-        self.n_filters = n_filters
+
+def parse_stride(stride):
+    if len(stride) == 1:
+        return stride, stride
+    if len(stride) == 2:
+        return stride
+
+
+class GenerativeNetwork():
+
+    def __init__(self, learn_filters=learn_pca_filters, n_filters=8,
+                 n_layers=3, patch_size=(7, 7), normalize=centralize,
+                 mode='same', boundary='constant', dtype=np.float32):
+
+        self._learn_filters, self._n_filters = parse_filter_options(
+            learn_filters, n_filters, n_layers)
+
         self.patch_size = patch_size
-        self.mean_centre = mean_centre
-        self.correlation = correlation
+        self.normalize = normalize
         self.mode = mode
         self.boundary = boundary
+        self.dtype = dtype
 
-    def learn_network(self, images, group=None, label=None, verbose=False,
-                      **kwargs):
+        self._filters = None
+        self._extract_patches = None
+
+    @property
+    def n_layers(self):
+        return len(self._n_filters)
+
+    @property
+    def n_filters(self):
+        n_filters = 0
+        for n in self._n_filters:
+            n_filters += np.sum(n)
+        return n_filters
+
+    @property
+    def n_filters_layer(self):
+        n_filters = []
+        for n in self._n_filters:
+            n_filters += [np.sum(n)]
+        return n_filters
+
+    def filters_spatial(self):
+        filters = []
+        for fs in self._filters:
+            for j, f in enumerate(fs):
+                fs[j] = Image(f)
+            filters.append(fs)
+        return filters
+
+    def filters_frequency(self):
+        filters = []
+        for fs in self._filters:
+            for j, f in enumerate(fs):
+                fs[j] = Image(np.abs(ifftshift(fft2(f))))
+            filters.append(fs)
+        return filters
+
+    def learn_network_from_landmarks(self, images, group=None, label=None,
+                                     verbose=False, **kwargs):
+
+        def extract_patches_function(imgs, patch_shape=(7, 7), dtype=None):
+            return extract_patches(
+                imgs, extract=extract_patches_from_landmarks,
+                patch_shape=patch_shape, dtype=dtype, group=group, label=label)
+
+        self._learn_network(images, extract_patches_function, verbose=verbose,
+                            **kwargs)
+
+    def learn_network_from_grid(self, images, stride=4, verbose=False,
+                                **kwargs):
+
+        stride = parse_stride(stride)
+
+        def extract_patches_function(imgs, patch_shape=(7, 7), dtype=None):
+            return extract_patches(imgs, extract=extract_patches_from_grid,
+                                   patch_shape=patch_shape, dtype=dtype,
+                                   stride=stride)
+
+        self._learn_network(images, extract_patches_function, verbose=verbose,
+                            **kwargs)
+
+    def _learn_network(self, images, extract_patches_function, verbose=False,
+                       **kwargs):
+
         if verbose:
             string = '- Learning network'
-        # initialize level_image and list of filters
-        level_images = images
-        self.filters = []
-        for j in range(self.n_levels):
+
+        # convert images to the appropriate type
+        convert_images_to_dtype_inplace(images, dtype=self.dtype)
+
+        # initialize list of _filters
+        self._filters = []
+
+        for j, (lfs, nfs) in enumerate(zip(self._learn_filters,
+                                           self._n_filters)):
             if verbose:
                 print_dynamic('{}: {}'.format(
-                    string, progress_bar_str(j/self.n_levels, show_bar=True)))
+                    string, progress_bar_str(j/self.n_layers, show_bar=True)))
+
             # extract level patches
-            level_patches = self._extract_patches(level_images, group=group,
-                                                  label=label)
-            # learn level filters
-            level_filters = self._learn_filters(level_patches, self.n_filters,
-                                                **kwargs)
+            patches = extract_patches_function(images,
+                                               patch_shape=self.patch_size,
+                                               dtype=self.dtype)
+
+            # learn level _filters
+            level_filters = []
+            for (lf, nf) in zip(lfs, nfs):
+                level_filters += lf(patches, nf, **kwargs)
+
+            # delete patches
+            del patches
+
             # compute level responses lists
-            level_images = self._compute_filter_responses(level_images,
-                                                          level_filters)
-            # save level filters
-            self.filters.append(level_filters)
+            images = self._compute_filter_responses(images, level_filters)
+            # save level _filters
+            self._filters.append(level_filters)
+
         if verbose:
             print_dynamic('{}: Done!\n'.format(string))
 
-    def _extract_patches(self, images, group=None, label=None):
-        patches = [i.extract_patches_around_landmarks(
-                   group=group, label=label, patch_size=self.patch_size)
-                   for i in images]
-        return [p for ps in patches for p in ps]
-
     def _compute_filter_responses(self, images, filters):
-        return [multiconvsum(i, filters, mean_centre=self.mean_centre,
-                             correlation=self.correlation, mode=self.mode,
+        return [multiconvsum(i, filters, mode=self.mode,
                              boundary=self.boundary)
                 for i in images]
 
+    def _compute_filter_responses(self, images, filters):
+        return [fft_convolve2d_sum(i, filters, mode=self.mode,
+                                   boundary=self.boundary)
+                for i in images]
+
     def learn_kernel(self, level=None, ext_shape=None):
-        kernel = self._learn_kernel(self.filters[:level],
+        kernel = self._learn_kernel(self._filters[:level],
                                     ext_shape=ext_shape)
         return Image(np.real(kernel))
 
@@ -133,38 +281,19 @@ class GenerativeDCKArch1():
 
         return kernel
 
-    # def _learn_kernel(self, filters, ext_shape=None):
-    #     if len(filters) > 1:
-    #         prev_kernel = self._learn_kernel(filters[1:], ext_shape=ext_shape)
-    #         kernel = 0
-    #         for j, f in enumerate(filters[0]):
-    #             ext_f = pad(f.pixels, ext_shape)
-    #             fft_ext_f = fft2(ext_f)
-    #             kernel += fft_ext_f.conj() * prev_kernel[j] * fft_ext_f
-    #     else:
-    #         kernel = 0
-    #         for f in filters[0]:
-    #             ext_f = pad(f.pixels, ext_shape)
-    #             fft_ext_f = fft2(ext_f)
-    #             kernel += fft_ext_f.conj() * fft_ext_f
-    #
-    #     return kernel
-
     def compute_network_response(self, image, level=None):
-        for j, fs in enumerate(self.filters[:level]):
+        for j, fs in enumerate(self._filters[:level]):
             if j < level:
-                image = multiconvsum(image, fs, mean_centre=self.mean_centre,
-                                     correlation=self.correlation,
-                                     mode=self.mode, boundary=self.boundary)
+                image = multiconvsum(image, fs, mode=self.mode,
+                                     boundary=self.boundary)
             else:
-                image = multiconvsum(image, fs, mean_centre=self.mean_centre,
-                                     correlation=self.correlation,
-                                     mode='same', boundary=self.boundary)
+                image = multiconvsum(image, fs, mode='same',
+                                     boundary=self.boundary)
         return image
 
     def compute_kernel_response(self, image, level=None):
         # obtain number of channels
-        n_ch, h, w = self.filters[0][0].pixels.shape
+        n_ch, h, w = self._filters[0][0].pixels.shape
 
         # obtain extended shape
         ext_h = image.shape[0] + h - 1
@@ -207,23 +336,23 @@ class GenerativeDCKArch1():
 #             string = '- Learning network'
 #         # extract centres
 #         centres = [i.landmarks[group][label] for i in images]
-#         # initialize level_image and list of filters
+#         # initialize level_image and list of _filters
 #         level_images = images
-#         self.filters = []
+#         self._filters = []
 #         for j in xrange(self.n_levels):
 #             if verbose:
 #                 print_dynamic('{}: {}'.format(
 #                     string, progress_bar_str(j/self.n_levels, show_bar=True)))
 #             # extract level patches
 #             level_patches = self._extract_patches(level_images, centres)
-#             # learn level filters
+#             # learn level _filters
 #             level_filters = self._learn_filters(level_patches, self.n_filters,
 #                                                 **kwargs)
 #             # compute level responses lists
 #             level_images = self._compute_filter_responses(level_images,
 #                                                           level_filters)
-#             # save level filters
-#             self.filters.append(level_filters)
+#             # save level _filters
+#             self._filters.append(level_filters)
 #
 #         if verbose:
 #             print_dynamic('{}: Done!\n'.format(string))
@@ -235,17 +364,17 @@ class GenerativeDCKArch1():
 #             patches.append(i_patches)
 #         return [i for i_patches in patches for i in i_patches]
 #
-#     def _compute_filter_responses(self, images, filters):
+#     def _compute_filter_responses(self, images, _filters):
 #         # compute responses lists
-#         images = [self._apply_filters(i, filters) for i in images]
+#         images = [self._apply_filters(i, _filters) for i in images]
 #         # flatten out and return list of responses
 #         return [i for img in images for i in img]
 #
-#     def _apply_filters(self, image, filters):
+#     def _apply_filters(self, image, _filters):
 #         # define extended shape
-#         ext_h = image.shape[0] + filters[0].shape[0] - 1
-#         ext_w = image.shape[1] + filters[0].shape[1] - 1
-#         ext_shape = (filters[0].n_channels, ext_h, ext_w)
+#         ext_h = image.shape[0] + _filters[0].shape[0] - 1
+#         ext_w = image.shape[1] + _filters[0].shape[1] - 1
+#         ext_shape = (_filters[0].n_channels, ext_h, ext_w)
 #
 #         # extend image
 #         ext_image = pad(image.pixels, ext_shape, mode=self.padding)
@@ -254,7 +383,7 @@ class GenerativeDCKArch1():
 #
 #         # initialize list of responses
 #         responses = []
-#         for j, f in enumerate(filters):
+#         for j, f in enumerate(_filters):
 #             # extend filter
 #             ext_f = pad(f.pixels, ext_shape, mode=self.padding)
 #             # compute extended filter fft
@@ -277,7 +406,7 @@ class GenerativeDCKArch1():
 #
 #     def learn_kernel(self, level=None, ext_shape=None):
 #         kernel = 1
-#         for level_filters in self.filters[:level]:
+#         for level_filters in self._filters[:level]:
 #             k = 0
 #             for f in level_filters:
 #                 if ext_shape:
@@ -291,7 +420,7 @@ class GenerativeDCKArch1():
 #
 #     def compute_network_response(self, image, level=None):
 #         images = [image]
-#         for level_filters in self.filters[:level]:
+#         for level_filters in self._filters[:level]:
 #             images = self._compute_filter_responses(images, level_filters)
 #         return self._list_to_image(images)
 #
@@ -307,7 +436,7 @@ class GenerativeDCKArch1():
 #
 #     def compute_kernel_response(self, image, level=None):
 #         # obtain number of channels
-#         n_ch, h, w = self.filters[0][0].pixels.shape
+#         n_ch, h, w = self._filters[0][0].pixels.shape
 #
 #         # obtain extended shape
 #         ext_h = image.shape[0] + h - 1
@@ -351,23 +480,23 @@ class GenerativeDCKArch1():
 #             string = '- Learning network'
 #         # extract centres
 #         centres = [i.landmarks[group][label] for i in images]
-#         # initialize level_image and list of filters
+#         # initialize level_image and list of _filters
 #         level_images = images
-#         self.filters = []
+#         self._filters = []
 #         for j in range(self.n_levels):
 #             if verbose:
 #                 print_dynamic('{}: {}'.format(
 #                     string, progress_bar_str(j/self.n_levels, show_bar=True)))
 #             # extract level patches
 #             level_patches = self._extract_patches(level_images, centres)
-#             # learn level filters
+#             # learn level _filters
 #             level_filters = self._learn_filters(level_patches, self.n_filters,
 #                                                 **kwargs)
 #             # compute level responses lists
 #             level_images = self._compute_filter_responses(level_images,
 #                                                           level_filters)
-#             # save level filters
-#             self.filters.append(level_filters)
+#             # save level _filters
+#             self._filters.append(level_filters)
 #
 #         if verbose:
 #             print_dynamic('{}: Done!\n'.format(string))
@@ -379,16 +508,16 @@ class GenerativeDCKArch1():
 #             patches.append(i_patches)
 #         return [i for i_patches in patches for i in i_patches]
 #
-#     def _compute_filter_responses(self, images, filters):
+#     def _compute_filter_responses(self, images, _filters):
 #         # compute  and return list of responses
-#         return [self._apply_filters(i, filters) for i in images]
+#         return [self._apply_filters(i, _filters) for i in images]
 #
-#     def _apply_filters(self, image, filters):
+#     def _apply_filters(self, image, _filters):
 #         # define extended shape
-#         ext_h = image.shape[0] + filters[0].shape[0] - 1
-#         ext_w = image.shape[1] + filters[0].shape[1] - 1
+#         ext_h = image.shape[0] + _filters[0].shape[0] - 1
+#         ext_w = image.shape[1] + _filters[0].shape[1] - 1
 #         N = np.sqrt(ext_h * ext_w)
-#         ext_shape = (filters[0].n_channels, ext_h, ext_w)
+#         ext_shape = (_filters[0].n_channels, ext_h, ext_w)
 #         # define response extended shape
 #         r_ext_shape = (image.n_channels, image.shape[0], image.shape[1])
 #
@@ -399,7 +528,7 @@ class GenerativeDCKArch1():
 #
 #         # initialize response
 #         response = 0
-#         for f in filters:
+#         for f in _filters:
 #             n_ch = f.shape[0]
 #
 #             # extend filter
@@ -421,16 +550,16 @@ class GenerativeDCKArch1():
 #         return Image(response)
 #
 #     def learn_kernel(self, level=None, ext_shape=None):
-#         kernel = self._learn_kernel(self.filters[:level], ext_shape=ext_shape)
+#         kernel = self._learn_kernel(self._filters[:level], ext_shape=ext_shape)
 #         return Image(fftshift(kernel, axes=(-2, -1)))
 #
-#     def _learn_kernel(self, filters, ext_shape=None):
+#     def _learn_kernel(self, _filters, ext_shape=None):
 #         _, ext_h, ext_w = ext_shape
 #         N = ext_h * ext_w
-#         if len(filters) > 1:
-#             prev_kernel = self._learn_kernel(filters[1:], ext_shape=ext_shape)
+#         if len(_filters) > 1:
+#             prev_kernel = self._learn_kernel(_filters[1:], ext_shape=ext_shape)
 #             kernel = 0
-#             for j, f in enumerate(filters[0]):
+#             for j, f in enumerate(_filters[0]):
 #                 n_ch = f.shape[0]
 #                 if ext_shape:
 #                     f_pixels = pad(f.pixels, ext_shape, mode=self.padding)
@@ -440,7 +569,7 @@ class GenerativeDCKArch1():
 #                 kernel += fft_f * prev_kernel[j] * fft_f
 #         else:
 #             kernel = 0
-#             for f in filters[0]:
+#             for f in _filters[0]:
 #                 n_ch = f.shape[0]
 #                 if ext_shape:
 #                     f_pixels = pad(f.pixels, ext_shape, mode=self.padding)
@@ -452,13 +581,13 @@ class GenerativeDCKArch1():
 #         return kernel
 #
 #     def compute_network_response(self, image, level=None):
-#         for level_filters in self.filters[:level]:
+#         for level_filters in self._filters[:level]:
 #             image = self._apply_filters(image, level_filters)
 #         return image
 #
 #     def compute_kernel_response(self, image, level=None):
 #         # obtain number of channels
-#         n_ch, h, w = self.filters[0][0].pixels.shape
+#         n_ch, h, w = self._filters[0][0].pixels.shape
 #
 #         # obtain extended shape
 #         ext_h = image.shape[0] + h - 1
@@ -504,9 +633,9 @@ class GenerativeDCKArch1():
 #             string = '- Learning network'
 #         # extract centres
 #         centres = [i.landmarks[group][label] for i in images]
-#         # initialize level_image and list of filters
+#         # initialize level_image and list of _filters
 #         level_images = images
-#         self.filters = []
+#         self._filters = []
 #         for j in xrange(self.n_levels):
 #             if verbose:
 #                 print_dynamic('{}: {}'.format(
@@ -515,11 +644,11 @@ class GenerativeDCKArch1():
 #             # extract level patches
 #             level_patches = self._extract_patches(level_images, centres)
 #
-#             # learn level filters
+#             # learn level _filters
 #             level_filters = self._learn_filters(level_patches, self.n_filters,
 #                                                 **kwargs)
-#             # save level filters
-#             self.filters.append(level_filters)
+#             # save level _filters
+#             self._filters.append(level_filters)
 #
 #             # compute level responses lists
 #             level_images = self._compute_kernel_responses(images)
@@ -540,7 +669,7 @@ class GenerativeDCKArch1():
 #
 #     def compute_kernel_response(self, image, level=None):
 #         # obtain number of channels
-#         n_ch, h, w = self.filters[0][0].pixels.shape
+#         n_ch, h, w = self._filters[0][0].pixels.shape
 #
 #         # obtain extended shape
 #         ext_h = image.shape[0] + h - 1
@@ -568,7 +697,7 @@ class GenerativeDCKArch1():
 #
 #     def learn_kernel(self, level=None, ext_shape=None):
 #         kernel = 1
-#         for level_filters in self.filters[:level]:
+#         for level_filters in self._filters[:level]:
 #             k = 0
 #             for f in level_filters:
 #                 if ext_shape:
@@ -582,21 +711,21 @@ class GenerativeDCKArch1():
 #
 #     def compute_network_response(self, image, level=None):
 #         images = [image]
-#         for level_filters in self.filters[:level]:
+#         for level_filters in self._filters[:level]:
 #             images = self._compute_filter_responses(images, level_filters)
 #         return self._list_to_image(images)
 #
-#     def _compute_filter_responses(self, images, filters):
+#     def _compute_filter_responses(self, images, _filters):
 #         # compute responses lists
-#         images = [self._apply_filters(i, filters) for i in images]
+#         images = [self._apply_filters(i, _filters) for i in images]
 #         # flatten out and return list of responses
 #         return [i for img in images for i in img]
 #
-#     def _apply_filters(self, image, filters):
+#     def _apply_filters(self, image, _filters):
 #         # define extended shape
-#         ext_h = image.shape[0] + filters[0].shape[0] - 1
-#         ext_w = image.shape[1] + filters[0].shape[1] - 1
-#         ext_shape = (filters[0].n_channels, ext_h, ext_w)
+#         ext_h = image.shape[0] + _filters[0].shape[0] - 1
+#         ext_w = image.shape[1] + _filters[0].shape[1] - 1
+#         ext_shape = (_filters[0].n_channels, ext_h, ext_w)
 #
 #         # extend image
 #         ext_image = pad(image.pixels, ext_shape, mode=self.padding)
@@ -605,7 +734,7 @@ class GenerativeDCKArch1():
 #
 #         # initialize list of responses
 #         responses = []
-#         for j, f in enumerate(filters):
+#         for j, f in enumerate(_filters):
 #             # extend filter
 #             ext_f = pad(f.pixels, ext_shape, mode=self.padding)
 #             # compute extended filter fft

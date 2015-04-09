@@ -9,7 +9,7 @@ from menpo.image import Image
 from menpo.visualize import print_dynamic, progress_bar_str
 
 
-# Learn component analysis filters --------------------------------------------
+# Learn component analysis _filters --------------------------------------------
 
 def learn_pca_filters(patches, n_filters=8, mean_centre=True):
     if mean_centre:
@@ -20,7 +20,7 @@ def learn_pca_filters(patches, n_filters=8, mean_centre=True):
     pca = PCAModel(patches)
     # set active number of components
     pca.n_active_components = n_filters
-    # grab filters
+    # grab _filters
     filters = [pca.template_instance.from_vector(pc) for pc in pca.components]
     return filters
 
@@ -35,7 +35,7 @@ def learn_ica_filters(patches, n_filters=8, mean_centre=True,
     # learn ica model
     ica = ICAModel(patches, algorithm=algorithm, negentropy_approx=negentropy,
                    n_components=n_filters, max_iters=max_iters)
-    # grab filters
+    # grab _filters
     filters = [ica.template_instance.from_vector(ic) for ic in ica.components]
     return filters
 
@@ -45,7 +45,7 @@ def learn_nmf_filters(patches, n_filters=8, max_iters=500, verbose=False,
     # learn nmf model
     nmf = NMFModel(patches, n_components=n_filters, max_iters=max_iters,
                    verbose=verbose, **kwargs)
-    # grab filters
+    # grab _filters
     filters = [nmf.template_instance.from_vector(nf) for nf in nmf.components]
     return filters
 
@@ -120,7 +120,7 @@ class DeepLearnConvKernelArch1():
             string = '- Learning network'
         # extract centres
         centres = [i.landmarks[group][label] for i in images]
-        # initialize level_image and list of filters
+        # initialize level_image and list of _filters
         level_images = images
         self.filters = []
         for j in range(self.n_levels):
@@ -129,13 +129,13 @@ class DeepLearnConvKernelArch1():
                     string, progress_bar_str(j/self.n_levels, show_bar=True)))
             # extract level patches
             level_patches = self._extract_patches(level_images, centres)
-            # learn level filters
+            # learn level _filters
             level_filters = self._learn_filters(level_patches, self.n_filters,
                                                 **kwargs)
             # compute level responses lists
             level_images = self._compute_filter_responses(level_images,
                                                           level_filters)
-            # save level filters
+            # save level _filters
             self.filters.append(level_filters)
 
         if verbose:
@@ -268,7 +268,7 @@ class DeepLearnConvKernelArch2():
             string = '- Learning network'
         # extract centres
         centres = [i.landmarks[group][label] for i in images]
-        # initialize level_image and list of filters
+        # initialize level_image and list of _filters
         level_images = images
         self.filters = []
         for j in xrange(self.n_levels):
@@ -277,13 +277,13 @@ class DeepLearnConvKernelArch2():
                     string, progress_bar_str(j/self.n_levels, show_bar=True)))
             # extract level patches
             level_patches = self._extract_patches(level_images, centres)
-            # learn level filters
+            # learn level _filters
             level_filters = self._learn_filters(level_patches, self.n_filters,
                                                 **kwargs)
             # compute level responses lists
             level_images = self._compute_filter_responses(level_images,
                                                           level_filters)
-            # save level filters
+            # save level _filters
             self.filters.append(level_filters)
 
         if verbose:
@@ -395,7 +395,7 @@ class DeepLearnConvKernelArch2():
         return Image(r)
 
 
-# Learn discriminative correlation filters ------------------------------------
+# Learn discriminative correlation _filters ------------------------------------
 
 def learn_dc_filters(patches, mean_centre=True):
     if mean_centre:
@@ -404,7 +404,7 @@ def learn_dc_filters(patches, mean_centre=True):
             p.mean_centre_inplace()
     # learn pca model
     cf = CFModel(patches)
-    # grab filters
+    # grab _filters
     filters = [cf.template_instance.from_vector(f) for f in cf.filters]
     return filters
 
@@ -429,7 +429,7 @@ class DeepDiscConvKernelArch1():
             string = '- Learning network'
         # extract centres
         centres = [i.landmarks[group][label] for i in images]
-        # initialize level_image and list of filters
+        # initialize level_image and list of _filters
         level_images = images
         self.filters = []
         for j in range(self.n_levels):
@@ -438,13 +438,13 @@ class DeepDiscConvKernelArch1():
                     string, progress_bar_str(j/self.n_levels, show_bar=True)))
             # extract level patches
             level_patches = self._extract_patches(level_images, centres)
-            # learn level filters
+            # learn level _filters
             level_filters = self._learn_filters(level_patches, self.n_filters,
                                                 **kwargs)
             # compute level responses lists
             level_images = self._compute_filter_responses(level_images,
                                                           level_filters)
-            # save level filters
+            # save level _filters
             self.filters.append(level_filters)
 
         if verbose:

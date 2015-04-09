@@ -7,7 +7,7 @@ from menpo.image import Image
 from alaborticcv2015.utils import pad, unpad
 
 
-class SelfSimDCKArch1():
+class SelfCorrNetwork():
 
     def __init__(self, patch_size=(7, 7), mean_centre=True, n_levels=3,
                  padding='constant'):

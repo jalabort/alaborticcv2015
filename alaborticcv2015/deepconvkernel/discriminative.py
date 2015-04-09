@@ -18,7 +18,7 @@ def learn_lda_filters(patches, classes, n_filters=8, mean_centre=True):
             p.mean_centre_inplace()
     # learn pca model
     lda = LDAModel(patches, classes)
-    # grab filters
+    # grab _filters
     filters = [lda.template_instance.from_vector(ld)
                for ld in lda.components[:n_filters, :]]
     return filters
@@ -31,9 +31,9 @@ def learn_lda_filters(patches, classes, n_filters=8, mean_centre=True):
 #             p.mean_centre_inplace()
 #     # learn pca model
 #     cf = CFModel(patches)
-#     # grab filters
-#     filters = [cf.template_instance.from_vector(f) for f in cf.filters]
-#     return filters
+#     # grab _filters
+#     _filters = [cf.template_instance.from_vector(f) for f in cf._filters]
+#     return _filters
 
 
 class DiscriminativeDCKArch1():
@@ -54,7 +54,7 @@ class DiscriminativeDCKArch1():
             string = '- Learning network'
         # extract centres
         centres = [i.landmarks[group][label] for i in images]
-        # initialize level_image and list of filters
+        # initialize level_image and list of _filters
         level_images = images
         self.filters = []
         for j in range(self.n_levels):
@@ -64,13 +64,13 @@ class DiscriminativeDCKArch1():
             # extract level patches
             level_patches, level_classes = self._extract_patches(level_images,
                                                                  centres)
-            # learn level filters
+            # learn level _filters
             level_filters = self._learn_filters(level_patches, level_classes,
                                                 self.n_filters, **kwargs)
             # compute level responses lists
             level_images = self._compute_filter_responses(level_images,
                                                           level_filters)
-            # save level filters
+            # save level _filters
             self.filters.append(level_filters)
 
         if verbose:
@@ -206,7 +206,7 @@ class DiscriminativeDCKArch2():
             string = '- Learning network'
         # extract centres
         centres = [i.landmarks[group][label] for i in images]
-        # initialize level_image and list of filters
+        # initialize level_image and list of _filters
         level_images = images
         self.filters = []
         for j in xrange(self.n_levels):
@@ -216,13 +216,13 @@ class DiscriminativeDCKArch2():
             # extract level patches
             level_patches, level_classes = self._extract_patches(level_images,
                                                                  centres)
-            # learn level filters
+            # learn level _filters
             level_filters = self._learn_filters(level_patches, level_classes,
                                                 self.n_filters, **kwargs)
             # compute level responses lists
             level_images = self._compute_filter_responses(level_images,
                                                           level_filters)
-            # save level filters
+            # save level _filters
             self.filters.append(level_filters)
 
         if verbose:
@@ -354,7 +354,7 @@ class DiscriminativeDCKArch3():
             string = '- Learning network'
         # extract centres
         centres = [i.landmarks[group][label] for i in images]
-        # initialize level_image and list of filters
+        # initialize level_image and list of _filters
         level_images = [images for _ in range(len([centres[0].points]))]
         self.filters = []
         for j in xrange(self.n_levels):
@@ -363,12 +363,12 @@ class DiscriminativeDCKArch3():
                     string, progress_bar_str(j/self.n_levels, show_bar=True)))
             # extract level patches
             level_patches = self._extract_patches(level_images, centres)
-            # learn level filters
+            # learn level _filters
             level_filters = self._learn_filters(level_patches, **kwargs)
             # compute level responses lists
             level_images = self._compute_filter_responses(level_images,
                                                           level_filters)
-            # save level filters
+            # save level _filters
             self.filters.append(level_filters)
 
         if verbose:
