@@ -103,22 +103,64 @@ def _compute_kernel1(filters, ext_shape=None):
     return np.real(kernel)
 
 
-def _compute_kernel(filters, ext_shape=None):
+def _compute_kernel2(filters, ext_shape=None):
     if len(filters) > 1:
-        prev_kernel = _compute_kernel(filters[1:], ext_shape=ext_shape)
+        prev_kernel = _compute_kernel2(filters[1:], ext_shape=ext_shape)
         fs = filters[0]
         if ext_shape is not None:
             fs = pad(fs, ext_shape=ext_shape)
         fft_fs = fft2(fs)
-        kernel = np.sum(fft_fs.conj() * prev_kernel[:, None, ...] * fft_fs,
-                        axis=0)
+        kernel = (np.sum(fft_fs.conj(), axis=0) *
+                  np.sum(prev_kernel, axis=0)[None] *
+                  np.sum(fft_fs, axis=0))
     else:
         fs = filters[0]
         if ext_shape is not None:
             fs = pad(fs, ext_shape=ext_shape)
         fft_fs = fft2(fs)
-        kernel = np.sum(fft_fs.conj() * fft_fs, axis=0)
+        kernel = np.sum(fft_fs.conj(), axis=0) * np.sum(fft_fs, axis=0)
     return np.real(kernel)
+
+
+def __compute_kernel3(filters, ext_shape=None):
+    if len(filters) > 1:
+        aux1, aux2 = __compute_kernel3(filters[:-1], ext_shape=ext_shape)
+        fs = filters[0]
+        if ext_shape is not None:
+            fs = pad(fs, ext_shape=ext_shape)
+        fft_fs = fft2(fs)
+        aux1 = np.sum(fft_fs[None] * aux1[:, :, None, ...], axis=1)
+        aux2 = np.sum(fft_fs.conj()[None] * aux2[:, :, None, ...], axis=1)
+    else:
+        fs = filters[0]
+        if ext_shape is not None:
+            fs = pad(fs, ext_shape=ext_shape)
+        aux1 = fft2(fs)
+        aux2 = aux1.conj()
+    return aux1, aux2
+
+
+def _compute_kernel3(filters, ext_shape=None):
+    aux1, aux2 = __compute_kernel3(filters, ext_shape=ext_shape)
+    return np.real(np.sum(aux1 * aux2, axis=0))
+
+
+# def _compute_kernel3(filters, ext_shape=None):
+#     if len(filters) > 1:
+#         prev_kernel = _compute_kernel3(filters[1:], ext_shape=ext_shape)
+#         fs = filters[0]
+#         if ext_shape is not None:
+#             fs = pad(fs, ext_shape=ext_shape)
+#         fft_fs = fft2(fs)
+#         kernel = np.sum(fft_fs.conj() * prev_kernel[:, None, ...] * fft_fs,
+#                         axis=0)
+#     else:
+#         fs = filters[0]
+#         if ext_shape is not None:
+#             fs = pad(fs, ext_shape=ext_shape)
+#         fft_fs = fft2(fs)
+#         kernel = np.sum(fft_fs.conj() * fft_fs, axis=0)
+#     return np.real(kernel)
 
 
 @ndfeature
@@ -233,7 +275,7 @@ class LinDeepConvNet(object):
 
     def _compute_kernel(self, layer=None, ext_shape=None):
         layer = _check_layer(layer, self.n_layers)
-        return _compute_kernel(self._filters[:layer+1], ext_shape=ext_shape)
+        return _compute_kernel3(self._filters[:layer+1], ext_shape=ext_shape)
 
     def network_response(self, image, layer=None, hidden_mode='same',
                          visible_mode='same', boundary='constant'):
