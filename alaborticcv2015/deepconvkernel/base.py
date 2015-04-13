@@ -8,7 +8,14 @@ from alaborticcv2015.utils import (
     pad, crop, fft_convolve2d_sum)
 
 
-def parse_filter_options(learn_filters, n_filters, n_layers):
+def _parse_filters(filters):
+    n_filters = []
+    for fs in filters:
+        n_filters.append(fs.shape[0])
+    return n_filters
+
+
+def _parse_filters_options(learn_filters, n_filters, n_layers):
     if hasattr(learn_filters, '__call__'):
         if isinstance(n_filters, int):
             return [[learn_filters]] * n_layers, [[n_filters]] * n_layers
@@ -20,7 +27,7 @@ def parse_filter_options(learn_filters, n_filters, n_layers):
             return [[learn_filters]] * len(n_filters), [[n] for n in n_filters]
     elif isinstance(learn_filters, list):
         if len(learn_filters) == 1:
-            return parse_filter_options(learn_filters[0], n_filters, n_layers)
+            return _parse_filters_options(learn_filters[0], n_filters, n_layers)
         elif hasattr(learn_filters[0], '__call__'):
             if isinstance(n_filters, int):
                 return [learn_filters] * n_layers, \
@@ -56,7 +63,7 @@ def parse_filter_options(learn_filters, n_filters, n_layers):
                 n_list = []
                 for j, (lfs, nfs) in enumerate(zip(learn_filters, n_filters)):
                     if isinstance(nfs, int) or len(nfs) == 1:
-                        lfs, nfs = parse_filter_options(lfs, nfs, 1)
+                        lfs, nfs = _parse_filters_options(lfs, nfs, 1)
                         lfs = lfs[0]
                         nfs = nfs[0]
                     elif len(lfs) != len(nfs):
@@ -143,45 +150,6 @@ def __compute_kernel3(filters, ext_shape=None):
 def _compute_kernel3(filters, ext_shape=None):
     aux1, aux2 = __compute_kernel3(filters, ext_shape=ext_shape)
     return np.real(np.sum(aux1 * aux2, axis=0))
-
-
-# def __compute_kernel3(filters, ext_shape=None):
-#     if len(filters) > 1:
-#         aux1 = __compute_kernel3(filters[1:], ext_shape=ext_shape)
-#         fs = filters[0]
-#         if ext_shape is not None:
-#             fs = pad(fs, ext_shape=ext_shape)
-#         fft_fs = fft2(fs)
-#         aux1 = np.sum(fft_fs[None] * aux1[:, :, None, ...], axis=1)
-#     else:
-#         fs = filters[0]
-#         if ext_shape is not None:
-#             fs = pad(fs, ext_shape=ext_shape)
-#         aux1 = fft2(fs)
-#     return aux1
-#
-#
-# def _compute_kernel3(filters, ext_shape=None):
-#     aux1 = __compute_kernel3(filters, ext_shape=ext_shape)
-#     return np.real(aux1)
-
-
-# def _compute_kernel3(filters, ext_shape=None):
-#     if len(filters) > 1:
-#         prev_kernel = _compute_kernel3(filters[1:], ext_shape=ext_shape)
-#         fs = filters[0]
-#         if ext_shape is not None:
-#             fs = pad(fs, ext_shape=ext_shape)
-#         fft_fs = fft2(fs)
-#         kernel = np.sum(fft_fs.conj() * prev_kernel[:, None, ...] * fft_fs,
-#                         axis=0)
-#     else:
-#         fs = filters[0]
-#         if ext_shape is not None:
-#             fs = pad(fs, ext_shape=ext_shape)
-#         fft_fs = fft2(fs)
-#         kernel = np.sum(fft_fs.conj() * fft_fs, axis=0)
-#     return np.real(kernel)
 
 
 @ndfeature

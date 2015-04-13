@@ -6,7 +6,7 @@ from menpo.math import log_gabor
 from .base import LinDeepConvNet
 
 
-def parse_gabor_params(params, n_layers):
+def _parse_params(params, n_layers):
     if params is None:
         params = {'num_scales': 4,
                   'num_orientations': 6,
@@ -20,38 +20,45 @@ def parse_gabor_params(params, n_layers):
             return [params] * n_layers, [n_filters] * n_layers
     elif isinstance(params, list):
         if len(params) == 1:
-            return parse_gabor_params(params[0], n_layers)
+            return _parse_params(params[0], n_layers)
         else:
             if len(params) != n_layers:
-                warnings.warn('n_layers does not agree with gabor_params, '
+                warnings.warn('n_layers does not agree with params, '
                               'the number of levels will be set based on '
-                              'gabor_params.')
+                              'params.')
             n_filters = []
             for p in params:
                 n_filters.append(p['num_scales'] * p['num_orientations'])
             return params, n_filters
 
 
+def build_loggabor_network(n_channels, params, n_filters_layer,
+                           patch_shape=(7, 7)):
+    filters = []
+    n_channels_layer = [n_channels] + n_filters_layer[:-1]
+    for gp, n_ch in zip(params, n_channels_layer):
+        fs = log_gabor(np.empty(patch_shape),
+                       num_scales=gp['num_scales'],
+                       num_orientations=gp['num_orientations'],
+                       min_wavelength=gp['min_wavelength'],
+                       scaling_constant=gp['scaling_constant'],
+                       center_sigma=gp['center_sigma'],
+                       d_phi_sigma=gp['d_phi_sigma'])[3]
+        fs = np.real(fftshift(ifft2(fs), axes=(-2, -1)))
+        fs = np.tile(fs[:, None, ...], (1, n_ch, 1, 1))
+        filters.append(fs)
+    return filters
+
+
 class LogGaborLDCN(LinDeepConvNet):
     r"""
     Log-Gabor Linear Deep Convolutional Network
     """
-    def __init__(self, gabor_params=None, n_layers=2, patch_shape=(7, 7)):
-        self.gabor_params, self._n_filters = parse_gabor_params(gabor_params,
-                                                                n_layers)
+    def __init__(self, params=None, n_layers=3, patch_shape=(7, 7)):
+        self.params, self._n_filters = _parse_params(params, n_layers)
         self.patch_shape = patch_shape
 
     def build_network(self, n_channels=3):
-        self._filters = []
-        n_channels_layer = [n_channels] + self.n_filters_layer[:-1]
-        for gp, n_ch in zip(self.gabor_params, n_channels_layer):
-            fs = log_gabor(np.empty(self.patch_shape),
-                           num_scales=gp['num_scales'],
-                           num_orientations=gp['num_orientations'],
-                           min_wavelength=gp['min_wavelength'],
-                           scaling_constant=gp['scaling_constant'],
-                           center_sigma=gp['center_sigma'],
-                           d_phi_sigma=gp['d_phi_sigma'])[3]
-            fs = np.real(fftshift(ifft2(fs), axes=(-2, -1)))
-            fs = np.tile(fs[:, None, ...], (1, n_ch, 1, 1))
-            self._filters.append(fs)
+        self.filters = build_loggabor_network(n_channels, self.params,
+                                              self.n_filters_layer,
+                                              self.patch_shape)

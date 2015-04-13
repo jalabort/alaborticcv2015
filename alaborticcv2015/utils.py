@@ -191,11 +191,14 @@ def extract_patches_from_grid(image, patch_shape=(7, 7), stride=(4, 4),
 
 
 def extract_patches(images, extract=extract_patches_from_grid,
-                    patch_shape=(7, 7), dtype=np.float32,  **kwargs):
+                    patch_shape=(7, 7), dtype=np.float32,
+                    as_ndarray=True, **kwargs):
     patches = []
     for i in images:
         ps = extract(i, patch_shape=patch_shape, dtype=dtype, **kwargs)
         patches += ps
+    if as_ndarray:
+        patches = np.asarray(patches)
     return patches
 
 
