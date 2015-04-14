@@ -3,8 +3,9 @@ import numpy as np
 import warnings
 from menpo.math import pca, ica, nmf
 from menpo.math.decomposition.ica import _batch_ica, negentropy_exp
+from menpo.feature import centralize
 from menpo.visualize import print_dynamic, progress_bar_str
-from alaborticcv2015.utils import normalize_patches, centralize
+from alaborticcv2015.utils import normalize_patches
 from .base import LearnableLDCN, compute_filters_responses
 
 

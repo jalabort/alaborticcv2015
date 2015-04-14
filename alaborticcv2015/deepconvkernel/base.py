@@ -4,11 +4,11 @@ import numpy as np
 from numpy.fft import fft2, ifft2, fftshift
 import warnings
 from menpo.image import Image
-from menpo.feature import ndfeature
+from menpo.feature import ndfeature, centralize
+from menpo.math import pad, crop, fft_convolve2d_sum
 from alaborticcv2015.utils import (
-    pad, crop, fft_convolve2d_sum,
-    centralize, normalize_patches,
-    extract_patches, extract_patches_from_grid, extract_patches_from_landmarks)
+    normalize_patches, extract_patches, extract_patches_from_grid,
+    extract_patches_from_landmarks)
 
 
 def _parse_filters(filters):

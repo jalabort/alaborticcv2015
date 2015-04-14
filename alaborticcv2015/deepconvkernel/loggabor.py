@@ -3,7 +3,7 @@ import numpy as np
 from numpy.fft import ifft2, fftshift
 import warnings
 from menpo.math import log_gabor
-from alaborticcv2015.utils import centralize
+from menpo.feature import centralize
 from .base import LinDeepConvNet, normalize_filters
 
 

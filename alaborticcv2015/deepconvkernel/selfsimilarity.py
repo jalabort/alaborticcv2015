@@ -1,8 +1,9 @@
 from __future__ import division
 import warnings
+from menpo.feature import centralize
 from menpo.visualize import print_dynamic, progress_bar_str
 from alaborticcv2015.deepconvkernel.base import _parse_filters
-from alaborticcv2015.utils import normalize_patches, centralize
+from alaborticcv2015.utils import normalize_patches
 from .base import LearnableLDCN, compute_filters_responses
 
 

@@ -1,4 +1,4 @@
-from alaborticcv2015.utils import centralize
+from menpo.feature import centralize
 from .base import LinDeepConvNet, _parse_filters, normalize_filters
 
 
