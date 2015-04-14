@@ -1,5 +1,6 @@
 from menpo.feature import centralize
-from .base import LinDeepConvNet, _parse_filters, normalize_filters
+from alaborticcv2015.utils import normalize_filters
+from .base import LinDeepConvNet, _parse_filters
 
 
 class PreTrainedLDCN(LinDeepConvNet):

@@ -4,7 +4,8 @@ from numpy.fft import ifft2, fftshift
 import warnings
 from menpo.math import log_gabor
 from menpo.feature import centralize
-from .base import LinDeepConvNet, normalize_filters
+from alaborticcv2015.utils import normalize_filters
+from .base import LinDeepConvNet
 
 
 def _parse_params(params, n_layers):

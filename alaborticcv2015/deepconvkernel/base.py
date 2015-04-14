@@ -42,13 +42,6 @@ def _check_layer(layer, n_layers):
     return layer
 
 
-def normalize_filters(filters, norm_func=centralize):
-    if norm_func:
-        for j, fs in enumerate(filters):
-            filters[j] = normalize_images(fs, norm_func=norm_func)
-    return filters
-
-
 def _compute_kernel1(filters, ext_shape=None):
     kernel = 1
     for fs in filters:

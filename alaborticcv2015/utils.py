@@ -64,6 +64,13 @@ def normalize_images(images, norm_func=centralize):
     return images
 
 
+def normalize_filters(filters, norm_func=centralize):
+    if norm_func:
+        for j, fs in enumerate(filters):
+            filters[j] = normalize_images(fs, norm_func=norm_func)
+    return filters
+
+
 def images_to_image(images):
     n_images = len(images[0])
     n_channels = images[0].n_channels
