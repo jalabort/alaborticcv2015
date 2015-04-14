@@ -1,4 +1,5 @@
 from __future__ import division
+import abc
 import numpy as np
 from numpy.fft import fft2, ifft2, fftshift
 import warnings
@@ -6,7 +7,8 @@ from menpo.image import Image
 from menpo.feature import ndfeature
 from alaborticcv2015.utils import (
     pad, crop, fft_convolve2d_sum,
-    centralize, normalize_patches)
+    centralize, normalize_patches,
+    extract_patches, extract_patches_from_grid, extract_patches_from_landmarks)
 
 
 def _parse_filters(filters):
@@ -16,76 +18,16 @@ def _parse_filters(filters):
     return n_filters
 
 
-def _parse_filters_options(learn_filters, n_filters, n_layers):
-    if hasattr(learn_filters, '__call__'):
-        if isinstance(n_filters, int):
-            return [[learn_filters]] * n_layers, [[n_filters]] * n_layers
-        elif isinstance(n_filters, list):
-            if len(n_filters) != n_layers:
-                warnings.warn('n_layers does not agree with n_filters, '
-                              'the number of levels will be set based on '
-                              'n_filters.')
-            return [[learn_filters]] * len(n_filters), [[n] for n in n_filters]
-    elif isinstance(learn_filters, list):
-        if len(learn_filters) == 1:
-            return _parse_filters_options(learn_filters[0], n_filters, n_layers)
-        elif hasattr(learn_filters[0], '__call__'):
-            if isinstance(n_filters, int):
-                return [learn_filters] * n_layers, \
-                       [[n_filters] * len(learn_filters)] * n_layers
-            elif isinstance(n_filters, list):
-                if len(n_filters) != n_layers:
-                    warnings.warn('n_layers does not agree with n_filters, '
-                                  'the number of levels will be set '
-                                  'based on n_filters.')
-                    n_layers = len(n_filters)
-                n_list = []
-                for j, nfs in enumerate(n_filters):
-                    if isinstance(nfs, int) or len(nfs) == 1:
-                        n_list.append([nfs] * len(learn_filters))
-                    elif len(nfs) == len(learn_filters):
-                        n_list.append(nfs)
-                    else:
-                        raise ValueError('n_filters does not agree with '
-                                         'learn_filters. Position {} of '
-                                         'n_filters must be and integer, '
-                                         'a list containing a single integer '
-                                         'or a list containing the same '
-                                         'number of integers as the length of'
-                                         'learn_filters.').format(j)
-                return [learn_filters] * n_layers,  n_list
-        elif isinstance(learn_filters[0], list):
-            if len(learn_filters) != n_layers:
-                warnings.warn('n_layers does not agree with learn_filters, '
-                              'the number of levels will be set based on '
-                              'learn_filters.')
-            if len(learn_filters) == len(n_filters):
-                learn_list = []
-                n_list = []
-                for j, (lfs, nfs) in enumerate(zip(learn_filters, n_filters)):
-                    if isinstance(nfs, int) or len(nfs) == 1:
-                        lfs, nfs = _parse_filters_options(lfs, nfs, 1)
-                        lfs = lfs[0]
-                        nfs = nfs[0]
-                    elif len(lfs) != len(nfs):
-                        raise ValueError('n_filters does not agree with '
-                                         'learn_filters. The total number of '
-                                         'elements in sublist {} of both '
-                                         'lists is not the same.').format(j)
-                    learn_list.append(lfs)
-                    n_list.append(nfs)
-                return learn_list, n_list
-            else:
-                raise ValueError('n_filters does not agree with learn_filters.'
-                                 ' The total number of elements in both '
-                                 'lists is not the same.')
-
-
 def _check_stride(stride):
-    if len(stride) == 1:
+    if isinstance(stride, np.int):
         return stride, stride
-    if len(stride) == 2:
+    elif len(stride) == 1:
+        return stride[0], stride[0]
+    elif len(stride) == 2:
         return stride
+    else:
+        raise ValueError('stide={}, must be and integer or tuple of '
+                         'integers').format(stride)
 
 
 def _check_layer(layer, n_layers):
@@ -95,9 +37,8 @@ def _check_layer(layer, n_layers):
         layer = n_layers
         warnings.warn('layer={} must be an integer between '
                       '0 and {}. Response will be computed using all {}'
-                      'layers of the network.') .format(layer,
-                                                        n_layers,
-                                                        n_layers)
+                      'layers of the network.').format(layer, n_layers,
+                                                       n_layers)
     return layer
 
 
@@ -158,6 +99,18 @@ def __compute_kernel3(filters, ext_shape=None):
 def _compute_kernel3(filters, ext_shape=None):
     aux1, aux2 = __compute_kernel3(filters, ext_shape=ext_shape)
     return np.real(np.sum(aux1 * aux2, axis=0))
+
+
+def compute_filters_responses(images, filters, norm_func=centralize,
+                              mode='same', boundary='symmetric'):
+    responses = []
+    for i in images:
+        if norm_func:
+            i = norm_func(i)
+        r = fft_convolve2d_sum(i, filters, mode=mode, boundary=boundary,
+                               axis=1)
+        responses.append(r)
+    return responses
 
 
 @ndfeature
@@ -291,5 +244,33 @@ class LinDeepConvNet(object):
                                 layer=layer, norm_func=self.norm_func,
                                 mode=mode, boundary=boundary)
 
-    def _normalize_filters(self):
-        self._filters = normalize_filters(self._filters, self.norm_func)
+
+class LearnableLDCN(LinDeepConvNet):
+    r"""
+    Learnable Linear Deep Convolutional Network Interface
+    """
+    def learn_network_from_grid(self, images, stride=4, verbose=False,
+                                **kwargs):
+        stride = _check_stride(stride)
+
+        def extract_patches_func(imgs):
+            return extract_patches(imgs, extract=extract_patches_from_grid,
+                                   patch_shape=self.patch_shape,
+                                   stride=stride, as_single_array=True)
+        self._learn_network(images, extract_patches_func, verbose=verbose,
+                            **kwargs)
+
+    def learn_network_from_landmarks(self, images, group=None, label=None,
+                                     verbose=False, **kwargs):
+        def extract_patches_func(imgs):
+            return extract_patches(imgs,
+                                   extract=extract_patches_from_landmarks,
+                                   patch_shape=self.patch_shape, group=group,
+                                   label=label, as_single_array=True)
+        self._learn_network(images, extract_patches_func, verbose=verbose,
+                            **kwargs)
+
+    @abc.abstractmethod
+    def _learn_network(self, images, extract_patches_func, verbose=False,
+                       **kwargs):
+        pass

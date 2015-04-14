@@ -1,16 +1,9 @@
 from __future__ import division
-import numpy as np
-from numpy.fft import ifft2, fftshift
 import warnings
 from menpo.visualize import print_dynamic, progress_bar_str
-from alaborticcv2015.deepconvkernel.base import (
-    _network_response, _parse_filters)
-from alaborticcv2015.utils import (
-    pad, fft_convolve2d_sum,
-    extract_patches, normalize_patches,
-    extract_patches_from_grid, extract_patches_from_landmarks,
-    centralize)
-from .base import LinDeepConvNet
+from alaborticcv2015.deepconvkernel.base import _parse_filters
+from alaborticcv2015.utils import normalize_patches, centralize
+from .base import LearnableLDCN, compute_filters_responses
 
 
 def _parse_params(params, n_layers):
@@ -27,7 +20,7 @@ def _parse_params(params, n_layers):
             return [params] * n_layers, [n_filters] * n_layers
     elif isinstance(params, list):
         if len(params) == 1:
-            return parse_gabor_params(params[0], n_layers)
+            return _parse_params(params[0], n_layers)
         else:
             if len(params) != n_layers:
                 warnings.warn('n_layers does not agree with params, '
@@ -39,81 +32,9 @@ def _parse_params(params, n_layers):
             return params, n_filters
 
 
-def _parse_stride(stride):
-    if len(stride) == 1:
-        return stride, stride
-    if len(stride) == 2:
-        return stride
-
-
-def learn_network_from_grid(images, n_layers, patch_shape=(7, 7),
-                            stride=(4, 4), norm_func=centralize,
-                            verbose=False):
-    def extract_patches_func(imgs):
-        return extract_patches(imgs, extract=extract_patches_from_grid,
-                               patch_shape=patch_shape, stride=stride,
-                               as_single_array=True)
-    return _learn_network(images, extract_patches_func, n_layers=n_layers,
-                          norm_func=norm_func, verbose=verbose)
-
-
-def learn_network_from_landmarks(images, n_layers, patch_shape=(7, 7),
-                                 group=None, label=None, norm_func=centralize,
-                                 verbose=False):
-    def extract_patches_func(imgs):
-        return extract_patches(imgs, extract=extract_patches_from_landmarks,
-                               patch_shape=patch_shape, group=group,
-                               label=label, as_single_array=True)
-    return _learn_network(images, extract_patches_func, n_layers=n_layers,
-                          norm_func=norm_func, verbose=verbose)
-
-
-def _learn_network(image, extract_patches_func, n_layers=3,
-                   norm_func=centralize, verbose=False):
-        if verbose:
-            string = '- Learning network'
-
-        images = [image]
-        filters = []
-        for l in range(n_layers):
-            if verbose:
-                print_dynamic('{}: {}'.format(
-                    string, progress_bar_str(l/n_layers, show_bar=True)))
-
-            # learn filters
-            fs = extract_patches_func(images)
-            fs = fs[..., ::-1, ::-1]
-            if norm_func is not None:
-                # normalize filters if required
-                fs = normalize_patches(fs, norm_func=norm_func)
-            # save filters
-            filters.append(fs)
-            if l != n_layers:
-                # compute responses if not last layer
-                images = compute_filter_responses(images, fs,
-                                                  norm_func=norm_func)
-
-        if verbose:
-            print_dynamic('{}: Done!\n'.format(string))
-
-        return filters
-
-
-def compute_filter_responses(images, filters, norm_func=centralize,
-                             mode='same', boundary='symmetric'):
-    responses = []
-    for i in images:
-        if norm_func:
-            i = norm_func(i)
-        r = fft_convolve2d_sum(i, filters, mode=mode, boundary=boundary,
-                               axis=1)
-        responses.append(r)
-    return responses
-
-
-class SelfSimLDCN(LinDeepConvNet):
+class SelfSimLDCN(LearnableLDCN):
     r"""
-    Self-Similarity Linear Deep Convolutional Network
+    Self-Similarity Linear Deep Convolutional Network Class
     """
     def __init__(self, n_layers=3, patch_shape=(7, 7),
                  norm_func=centralize, verbose=False):
@@ -122,16 +43,32 @@ class SelfSimLDCN(LinDeepConvNet):
         self.norm_func = norm_func
         self.verbose = verbose
 
-    def learn_network_from_grid(self, image, stride=(4, 4)):
-        stride = _parse_stride(stride)
-        self._filters = learn_network_from_grid(
-            image, n_layers=self._n_layers, patch_shape=self.patch_shape,
-            stride=stride, norm_func=self.norm_func, verbose=self.verbose)
+    def _learn_network(self, image, extract_patches_func, verbose=False,
+                       **kwargs):
+        if verbose:
+            string = '- Learning network'
+
+        images = [image]
+        filters = []
+        for l in range(self._n_layers):
+            if verbose:
+                print_dynamic('{}: {}'.format(
+                    string, progress_bar_str(l/self._n_layers, show_bar=True)))
+
+            # extract patches/filters
+            fs = extract_patches_func(images)
+            # flip filters
+            fs = fs[..., ::-1, ::-1]
+            # normalize filters
+            fs = normalize_patches(fs, norm_func=self.norm_func)
+            # save filters
+            filters.append(fs)
+            if l != self.n_layers:
+                # compute responses if not last layer
+                images = compute_filters_responses(images, fs,
+                                                   norm_func=self.norm_func)
+
         self._n_filters = _parse_filters(self._filters)
 
-    def learn_network_from_landmarks(self, image, group=None, label=None):
-        self._filters = learn_network_from_landmarks(
-            image, n_layers=self._n_layers, patch_shape=self.patch_shape,
-            group=group, label=label, norm_func=self.norm_func,
-            verbose=self.verbose)
-        self._n_filters = _parse_filters(self._filters)
+        if verbose:
+            print_dynamic('{}: Done!\n'.format(string))

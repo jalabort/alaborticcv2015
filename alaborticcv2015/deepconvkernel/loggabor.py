@@ -4,7 +4,7 @@ from numpy.fft import ifft2, fftshift
 import warnings
 from menpo.math import log_gabor
 from alaborticcv2015.utils import centralize
-from .base import LinDeepConvNet
+from .base import LinDeepConvNet, normalize_filters
 
 
 def _parse_params(params, n_layers):
@@ -35,7 +35,7 @@ def _parse_params(params, n_layers):
 
 class LogGaborLDCN(LinDeepConvNet):
     r"""
-    Log-Gabor Linear Deep Convolutional Network
+    Log-Gabor Linear Deep Convolutional Network Class
     """
     def __init__(self, params=None, n_layers=3, patch_shape=(7, 7),
                  norm_func=centralize):
@@ -44,7 +44,7 @@ class LogGaborLDCN(LinDeepConvNet):
         self.norm_func = norm_func
 
     def build_network(self, n_channels=3):
-        self._filters = []
+        filters = []
         n_channels_layer = [n_channels] + self.n_filters_layer[:-1]
         for gp, n_ch in zip(self.params, n_channels_layer):
             fs = log_gabor(np.empty(self.patch_shape),
@@ -56,5 +56,6 @@ class LogGaborLDCN(LinDeepConvNet):
                            d_phi_sigma=gp['d_phi_sigma'])[3]
             fs = np.real(fftshift(ifft2(fs), axes=(-2, -1)))
             fs = np.tile(fs[:, None, ...], (1, n_ch, 1, 1))
-            self._filters.append(fs)
-        self._normalize_filters()
+            filters.append(fs)
+
+        self._filters = normalize_filters(filters, self.norm_func)

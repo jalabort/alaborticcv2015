@@ -272,6 +272,7 @@ def greyscale(x, mode='luminosity', channel=None):
 
 
 def normalize_patches(patches, norm_func=centralize):
-    for j, p in enumerate(patches):
-        patches[j] = norm_func(p)
+    if norm_func is not None:
+        for j, p in enumerate(patches):
+            patches[j] = norm_func(p)
     return patches
