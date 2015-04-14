@@ -158,47 +158,54 @@ def fft_convolve2d_sum(x, f, mode='same', boundary='constant', axis=0,
                   axis=axis, keepdims=keepdims)
 
 
-def convert_images_to_dtype_inplace(images, dtype=None):
+@ndfeature
+def convert_image_to_dtype_inplace(pixels, dtype=None):
     if dtype:
-        for j, i in enumerate(images):
-            images[j].pixels = images[j].pixels.astype(dtype=dtype)
+        pixels = pixels.astype(dtype=dtype)
+    return pixels
 
 
 def extract_patches_from_landmarks(image, patch_shape=(7, 7), group=None,
-                                   label=None, dtype=np.float32):
+                                   label=None, as_single_array=False,
+                                   dtype=np.float32):
     image_cp = image.copy()
     image_cp.pixels_astype(dtype=np.float64)
     patches = image_cp.extract_patches_around_landmarks(
-        group=group, label=label, patch_size=patch_shape)
+        group=group, label=label, patch_size=patch_shape,
+        as_single_array=as_single_array)[:, 0, ...]
     del image_cp
-    convert_images_to_dtype_inplace(patches, dtype)
+    for j, p in enumerate(patches):
+        patches[j] = convert_image_to_dtype_inplace(p, dtype=dtype)
     return patches
 
 
 def extract_patches_from_grid(image, patch_shape=(7, 7), stride=(4, 4),
-                              dtype=np.float32):
+                              as_single_array=False, dtype=np.float32):
     limit = np.round(np.asarray(patch_shape) / 2)
     image_cp = image.copy()
     image_cp.pixels_astype(dtype=np.float64)
     h, w = image_cp.shape[-2:]
     grid = np.rollaxis(np.mgrid[limit[0]:h-limit[0]:stride[0],
                                 limit[1]:w-limit[0]:stride[1]], 0, 3)
-    pc = PointCloud(np.require(grid.reshape((-1, 2)), dtype=np.double))
-    patches = image_cp.extract_patches(pc, patch_size=patch_shape)
+    pc = PointCloud(np.require(grid.reshape((-1, 2)), dtype=np.float64))
+    patches = image_cp.extract_patches(pc, patch_size=patch_shape,
+                                       as_single_array=as_single_array)
     del image_cp
-    convert_images_to_dtype_inplace(patches, dtype)
+    for j, p in enumerate(patches):
+        patches[j] = convert_image_to_dtype_inplace(p, dtype=dtype)
     return patches
 
 
 def extract_patches(images, extract=extract_patches_from_grid,
-                    patch_shape=(7, 7), dtype=np.float32,
-                    as_ndarray=True, **kwargs):
+                    patch_shape=(7, 7), as_single_array=False,
+                    dtype=np.float32, **kwargs):
     patches = []
     for i in images:
-        ps = extract(i, patch_shape=patch_shape, dtype=dtype, **kwargs)
-        patches += ps
-    if as_ndarray:
-        patches = np.asarray(patches)
+        ps = extract(i, patch_shape=patch_shape, dtype=dtype,
+                     as_single_array=as_single_array, **kwargs)
+        patches.append(ps)
+    if as_single_array:
+        patches = np.asarray(patches).reshape((-1,) + patches[0].shape[-3:])
     return patches
 
 
@@ -264,111 +271,7 @@ def greyscale(x, mode='luminosity', channel=None):
     return x[None, ...]
 
 
-def conv(i, f, mode='same', boundary='constant'):
-    # extended shape
-    i_shape = np.asarray(i.shape)
-    f_shape = np.asarray(f.shape)
-    ext_shape = i_shape + f_shape - 1
-
-    # extend image and filter
-    ext_i = pad(i.pixels, ext_shape, boundary=boundary)
-    ext_f = pad(f.pixels, ext_shape)
-
-    # compute ffts of extended image and extended filter
-    fft_ext_i = fft2(ext_i)
-    fft_ext_f = fft2(ext_f)
-
-    # compute extended convolution in Fourier domain
-    fft_ext_c = fft_ext_f * fft_ext_i
-
-    # compute ifft of extended convolution
-    ext_c = np.real(ifftshift(ifft2(fft_ext_c), axes=(-2, -1)))
-
-    if mode is 'full':
-        c = ext_c
-    elif mode is 'same':
-        c = crop(ext_c, i_shape)
-    elif mode is 'valid':
-        c = crop(ext_c, i_shape - f_shape + 1)
-
-    return Image(c)
-
-
-def multiconvsum(i, fs, mode='same', boundary='constant'):
-    # extended shape
-    i_shape = np.asarray(i.shape)
-    f_shape = np.asarray(fs[0].shape)
-    ext_shape = i_shape + f_shape - 1
-
-    # extend image
-    ext_i = pad(i.pixels, ext_shape, boundary=boundary)
-    # compute ffts of extended image
-    fft_ext_i = fft2(ext_i)
-
-    # initialize extended response shape
-    ext_r = np.empty(np.hstack((len(fs), ext_shape)))
-    for j, f in enumerate(fs):
-        # extend filter
-        ext_f = pad(f.pixels, ext_shape)
-        # compute fft of filter
-        fft_ext_f = fft2(ext_f)
-
-        # compute extended convolution in Fourier domain
-        fft_ext_c = np.sum(fft_ext_f * fft_ext_i, axis=0)
-
-        # compute ifft of extended convolution
-        ext_r[j] = np.real(ifftshift(ifft2(fft_ext_c), axes=(-2, -1)))
-
-    if mode is 'full':
-        r = ext_r
-    elif mode is 'same':
-        r = crop(ext_r, i_shape)
-    elif mode is 'valid':
-        r = crop(ext_r, i_shape - f_shape + 1)
-    else:
-        raise ValueError(
-            "mode={}, is not supported. The only supported "
-            "modes are: 'full', 'same' and 'valid'.".format(mode))
-
-    return Image(r)
-
-
-def multiconvlist(i, fs, mode='same', boundary='constant'):
-    # extended shape
-    i_shape = np.asarray(i.shape)
-    f_shape = np.asarray(fs[0].shape)
-    ext_shape = i_shape + f_shape - 1
-
-    # extend image
-    ext_i = pad(i.pixels, ext_shape, boundary=boundary)
-    # compute ffts of extended image
-    fft_ext_i = fft2(ext_i)
-
-    # initialize responses list
-    rs = []
-    for j, f in enumerate(fs):
-        # extend filter
-        ext_f = pad(f.pixels, ext_shape)
-        # compute fft of filter
-        fft_ext_f = fft2(ext_f)
-
-        # compute extended convolution in Fourier domain
-        fft_ext_c = fft_ext_f * fft_ext_i
-
-        # compute ifft of extended convolution
-        ext_r = np.real(ifftshift(ifft2(fft_ext_c), axes=(-2, -1)))
-
-        if mode is 'full':
-            r = ext_r
-        elif mode is 'same':
-            r = crop(ext_r, i_shape)
-        elif mode is 'valid':
-            r = crop(ext_r, i_shape - f_shape + 1)
-        else:
-            raise ValueError(
-                "mode={}, is not supported. The only supported "
-                "modes are: 'full', 'same' and 'valid'.".format(mode))
-        # add
-        rs.append(Image(r))
-
-    return rs
+def normalize_patches(patches, norm_func=centralize):
+    for j, p in enumerate(patches):
+        patches[j] = norm_func(p)
+    return patches

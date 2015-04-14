@@ -7,7 +7,7 @@ from alaborticcv2015.deepconvkernel.base import (
     _network_response, _parse_filters)
 from alaborticcv2015.utils import (
     pad, fft_convolve2d_sum,
-    extract_patches,
+    extract_patches, normalize_patches,
     extract_patches_from_grid, extract_patches_from_landmarks,
     centralize)
 from .base import LinDeepConvNet
@@ -46,18 +46,13 @@ def _parse_stride(stride):
         return stride
 
 
-def normalize_patches(patches, norm_func=centralize):
-    for j, p in enumerate(patches):
-        patches[j] = norm_func(p)
-    return patches
-
-
 def learn_network_from_grid(images, n_layers, patch_shape=(7, 7),
                             stride=(4, 4), norm_func=centralize,
                             verbose=False):
     def extract_patches_func(imgs):
         return extract_patches(imgs, extract=extract_patches_from_grid,
-                               patch_shape=patch_shape, stride=stride)
+                               patch_shape=patch_shape, stride=stride,
+                               as_single_array=True)
     return _learn_network(images, extract_patches_func, n_layers=n_layers,
                           norm_func=norm_func, verbose=verbose)
 
@@ -68,7 +63,7 @@ def learn_network_from_landmarks(images, n_layers, patch_shape=(7, 7),
     def extract_patches_func(imgs):
         return extract_patches(imgs, extract=extract_patches_from_landmarks,
                                patch_shape=patch_shape, group=group,
-                               label=label)
+                               label=label, as_single_array=True)
     return _learn_network(images, extract_patches_func, n_layers=n_layers,
                           norm_func=norm_func, verbose=verbose)
 
@@ -87,13 +82,16 @@ def _learn_network(image, extract_patches_func, n_layers=3,
 
             # learn filters
             fs = extract_patches_func(images)
+            fs = fs[..., ::-1, ::-1]
             if norm_func is not None:
                 # normalize filters if required
                 fs = normalize_patches(fs, norm_func=norm_func)
-            # compute responses
-            images = _compute_filter_responses(images, fs)
             # save filters
             filters.append(fs)
+            if l != n_layers:
+                # compute responses if not last layer
+                images = compute_filter_responses(images, fs,
+                                                  norm_func=norm_func)
 
         if verbose:
             print_dynamic('{}: Done!\n'.format(string))
@@ -101,11 +99,16 @@ def _learn_network(image, extract_patches_func, n_layers=3,
         return filters
 
 
-def _compute_filter_responses(images, filters, hidden_mode='same',
-                              visible_mode='valid', boundary='symmetric'):
-        return [_network_response(i, filters, hidden_mode=hidden_mode,
-                                  visible_mode=visible_mode, boundary=boundary)
-                for i in images]
+def compute_filter_responses(images, filters, norm_func=centralize,
+                             mode='same', boundary='symmetric'):
+    responses = []
+    for i in images:
+        if norm_func:
+            i = norm_func(i)
+        r = fft_convolve2d_sum(i, filters, mode=mode, boundary=boundary,
+                               axis=1)
+        responses.append(r)
+    return responses
 
 
 class SelfSimLDCN(LinDeepConvNet):

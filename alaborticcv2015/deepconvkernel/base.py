@@ -5,7 +5,8 @@ import warnings
 from menpo.image import Image
 from menpo.feature import ndfeature
 from alaborticcv2015.utils import (
-    pad, crop, fft_convolve2d_sum)
+    pad, crop, fft_convolve2d_sum,
+    centralize, normalize_patches)
 
 
 def _parse_filters(filters):
@@ -100,6 +101,13 @@ def _check_layer(layer, n_layers):
     return layer
 
 
+def normalize_filters(filters, norm_func=centralize):
+    if norm_func:
+        for j, fs in enumerate(filters):
+            filters[j] = normalize_patches(fs, norm_func=norm_func)
+    return filters
+
+
 def _compute_kernel1(filters, ext_shape=None):
     kernel = 1
     for fs in filters:
@@ -153,9 +161,11 @@ def _compute_kernel3(filters, ext_shape=None):
 
 
 @ndfeature
-def _network_response(x, filters, hidden_mode='same', visible_mode='valid',
-                      boundary='symmetric'):
+def _network_response(x, filters, norm_func=centralize, hidden_mode='same',
+                      visible_mode='valid', boundary='symmetric'):
     limit = len(filters) - 1
+    if norm_func:
+        x = norm_func(x)
     for j, fs in enumerate(filters):
         if j < limit:
             x = fft_convolve2d_sum(x, fs, mode=hidden_mode,
@@ -168,7 +178,9 @@ def _network_response(x, filters, hidden_mode='same', visible_mode='valid',
 
 @ndfeature
 def _kernel_response(x, compute_kernel, filters_shape, layer=None,
-                     mode='valid', boundary='symmetric'):
+                     norm_func=centralize, mode='valid', boundary='symmetric'):
+    if norm_func:
+        x = norm_func(x)
     # extended shape
     x_shape = np.asarray(x.shape[-2:])
     f_shape = np.asarray(filters_shape)
@@ -270,10 +282,14 @@ class LinDeepConvNet(object):
                          visible_mode='same', boundary='constant'):
         layer = _check_layer(layer, self.n_layers)
         return _network_response(image, self._filters[:layer+1],
+                                 norm_func=self.norm_func,
                                  hidden_mode=hidden_mode,
                                  visible_mode=visible_mode, boundary=boundary)
 
     def kernel_response(self, x, layer=None, mode='same', boundary='constant'):
         return _kernel_response(x, self._compute_kernel, self.filters_shape,
-                                layer=layer, mode=mode, boundary=boundary)
+                                layer=layer, norm_func=self.norm_func,
+                                mode=mode, boundary=boundary)
 
+    def _normalize_filters(self):
+        self._filters = normalize_filters(self._filters, self.norm_func)

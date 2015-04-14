@@ -349,7 +349,7 @@ class GenerativeNetwork():
 #             level_filters = self._learn_filters(level_patches, self.n_filters,
 #                                                 **kwargs)
 #             # compute level responses lists
-#             level_images = self._compute_filter_responses(level_images,
+#             level_images = self.compute_filter_responses(level_images,
 #                                                           level_filters)
 #             # save level _filters
 #             self._filters.append(level_filters)
@@ -364,7 +364,7 @@ class GenerativeNetwork():
 #             patches.append(i_patches)
 #         return [i for i_patches in patches for i in i_patches]
 #
-#     def _compute_filter_responses(self, images, _filters):
+#     def compute_filter_responses(self, images, _filters):
 #         # compute responses lists
 #         images = [self._apply_filters(i, _filters) for i in images]
 #         # flatten out and return list of responses
@@ -421,7 +421,7 @@ class GenerativeNetwork():
 #     def compute_network_response(self, image, level=None):
 #         images = [image]
 #         for level_filters in self._filters[:level]:
-#             images = self._compute_filter_responses(images, level_filters)
+#             images = self.compute_filter_responses(images, level_filters)
 #         return self._list_to_image(images)
 #
 #     @classmethod
@@ -493,7 +493,7 @@ class GenerativeNetwork():
 #             level_filters = self._learn_filters(level_patches, self.n_filters,
 #                                                 **kwargs)
 #             # compute level responses lists
-#             level_images = self._compute_filter_responses(level_images,
+#             level_images = self.compute_filter_responses(level_images,
 #                                                           level_filters)
 #             # save level _filters
 #             self._filters.append(level_filters)
@@ -508,7 +508,7 @@ class GenerativeNetwork():
 #             patches.append(i_patches)
 #         return [i for i_patches in patches for i in i_patches]
 #
-#     def _compute_filter_responses(self, images, _filters):
+#     def compute_filter_responses(self, images, _filters):
 #         # compute  and return list of responses
 #         return [self._apply_filters(i, _filters) for i in images]
 #
@@ -712,10 +712,10 @@ class GenerativeNetwork():
 #     def compute_network_response(self, image, level=None):
 #         images = [image]
 #         for level_filters in self._filters[:level]:
-#             images = self._compute_filter_responses(images, level_filters)
+#             images = self.compute_filter_responses(images, level_filters)
 #         return self._list_to_image(images)
 #
-#     def _compute_filter_responses(self, images, _filters):
+#     def compute_filter_responses(self, images, _filters):
 #         # compute responses lists
 #         images = [self._apply_filters(i, _filters) for i in images]
 #         # flatten out and return list of responses

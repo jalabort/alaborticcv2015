@@ -3,6 +3,7 @@ import numpy as np
 from numpy.fft import ifft2, fftshift
 import warnings
 from menpo.math import log_gabor
+from alaborticcv2015.utils import centralize
 from .base import LinDeepConvNet
 
 
@@ -32,33 +33,28 @@ def _parse_params(params, n_layers):
             return params, n_filters
 
 
-def build_loggabor_network(n_channels, params, n_filters_layer,
-                           patch_shape=(7, 7)):
-    filters = []
-    n_channels_layer = [n_channels] + n_filters_layer[:-1]
-    for gp, n_ch in zip(params, n_channels_layer):
-        fs = log_gabor(np.empty(patch_shape),
-                       num_scales=gp['num_scales'],
-                       num_orientations=gp['num_orientations'],
-                       min_wavelength=gp['min_wavelength'],
-                       scaling_constant=gp['scaling_constant'],
-                       center_sigma=gp['center_sigma'],
-                       d_phi_sigma=gp['d_phi_sigma'])[3]
-        fs = np.real(fftshift(ifft2(fs), axes=(-2, -1)))
-        fs = np.tile(fs[:, None, ...], (1, n_ch, 1, 1))
-        filters.append(fs)
-    return filters
-
-
 class LogGaborLDCN(LinDeepConvNet):
     r"""
     Log-Gabor Linear Deep Convolutional Network
     """
-    def __init__(self, params=None, n_layers=3, patch_shape=(7, 7)):
+    def __init__(self, params=None, n_layers=3, patch_shape=(7, 7),
+                 norm_func=centralize):
         self.params, self._n_filters = _parse_params(params, n_layers)
         self.patch_shape = patch_shape
+        self.norm_func = norm_func
 
     def build_network(self, n_channels=3):
-        self.filters = build_loggabor_network(n_channels, self.params,
-                                              self.n_filters_layer,
-                                              self.patch_shape)
+        self._filters = []
+        n_channels_layer = [n_channels] + self.n_filters_layer[:-1]
+        for gp, n_ch in zip(self.params, n_channels_layer):
+            fs = log_gabor(np.empty(self.patch_shape),
+                           num_scales=gp['num_scales'],
+                           num_orientations=gp['num_orientations'],
+                           min_wavelength=gp['min_wavelength'],
+                           scaling_constant=gp['scaling_constant'],
+                           center_sigma=gp['center_sigma'],
+                           d_phi_sigma=gp['d_phi_sigma'])[3]
+            fs = np.real(fftshift(ifft2(fs), axes=(-2, -1)))
+            fs = np.tile(fs[:, None, ...], (1, n_ch, 1, 1))
+            self._filters.append(fs)
+        self._normalize_filters()
