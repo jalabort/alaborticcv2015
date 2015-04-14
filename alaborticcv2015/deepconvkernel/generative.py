@@ -5,8 +5,8 @@ from menpo.math import pca, ica, nmf
 from menpo.math.decomposition.ica import _batch_ica, negentropy_exp
 from menpo.feature import centralize
 from menpo.visualize import print_dynamic, progress_bar_str
-from alaborticcv2015.utils import normalize_patches
-from .base import LearnableLDCN, compute_filters_responses
+from alaborticcv2015.utils import normalize_images
+from .base import LearnableLDCN
 
 
 def learn_pca_filters(patches, n_filters=8):
@@ -120,13 +120,12 @@ class GenerativeLDCN(LearnableLDCN):
     r"""
     Generative Linear Deep Convolutional Network Class
     """
-    def __init__(self, learn_filters=learn_pca_filters, n_filters=8,
-                 n_layers=3, patch_shape=(7, 7), norm_func=centralize,
-                 mode='same', boundary='constant'):
-
+    def __init__(self, architecture=3, learn_filters=learn_pca_filters,
+                 n_filters=8, n_layers=3, patch_shape=(7, 7),
+                 norm_func=centralize, mode='same', boundary='constant'):
+        super(GenerativeLDCN, self).__init__(architecture=architecture)
         self._learn_filters, self._n_filters = _parse_params(
             learn_filters, n_filters, n_layers)
-
         self.patch_shape = patch_shape
         self.norm_func = norm_func
         self.mode = mode
@@ -151,7 +150,7 @@ class GenerativeLDCN(LearnableLDCN):
             # extract patches
             patches = extract_patches_func(images)
             # normalize patches
-            patches = normalize_patches(patches, norm_func=self.norm_func)
+            patches = normalize_images(patches, norm_func=self.norm_func)
             # learn level filters
             fs = np.empty((self.n_filters_layer[l], n_ch) + self.patch_shape)
             start = 0
@@ -161,14 +160,14 @@ class GenerativeLDCN(LearnableLDCN):
             # delete patches
             del patches
             # normalize filters
-            fs = normalize_patches(fs, norm_func=self.norm_func)
+            fs = normalize_images(fs, norm_func=self.norm_func)
             # save filters
             filters.append(fs)
             if l != self.n_layers:
-                # compute responses if not last layer
-                images = compute_filters_responses(images, fs,
-                                                   norm_func=self.norm_func)
-                n_ch = self.n_filters_layer[l]
+                # if not last layer, compute responses
+                images = self.compute_filters_responses(
+                    images, fs, norm_func=self.norm_func)
+                n_ch = images[0].n_channels
 
         self._filters = filters
 

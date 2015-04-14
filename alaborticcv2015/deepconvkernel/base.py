@@ -5,10 +5,10 @@ from numpy.fft import fft2, ifft2, fftshift
 import warnings
 from menpo.image import Image
 from menpo.feature import ndfeature, centralize
-from menpo.math import pad, crop, fft_convolve2d_sum
+from menpo.math import pad, crop, fft_convolve2d, fft_convolve2d_sum
 from alaborticcv2015.utils import (
-    normalize_patches, extract_patches, extract_patches_from_grid,
-    extract_patches_from_landmarks)
+    normalize_images, extract_patches, extract_patches_from_grid,
+    extract_patches_from_landmarks, images_to_image)
 
 
 def _parse_filters(filters):
@@ -45,7 +45,7 @@ def _check_layer(layer, n_layers):
 def normalize_filters(filters, norm_func=centralize):
     if norm_func:
         for j, fs in enumerate(filters):
-            filters[j] = normalize_patches(fs, norm_func=norm_func)
+            filters[j] = normalize_images(fs, norm_func=norm_func)
     return filters
 
 
@@ -101,8 +101,31 @@ def _compute_kernel3(filters, ext_shape=None):
     return np.real(np.sum(aux1 * aux2, axis=0))
 
 
-def compute_filters_responses(images, filters, norm_func=centralize,
-                              mode='same', boundary='symmetric'):
+def _compute_filters_responses1(images, filters, norm_func=centralize,
+                                mode='same', boundary='symmetric'):
+    responses = []
+    for i in images:
+        if norm_func:
+            i = norm_func(i)
+        for f in filters:
+            r = fft_convolve2d(i, f, mode=mode, boundary=boundary)
+            responses.append(r)
+    return responses
+
+
+def _compute_filters_responses2(images, filters, norm_func=centralize,
+                                mode='same', boundary='symmetric'):
+    responses = []
+    for i in images:
+        if norm_func:
+            i = norm_func(i)
+        r = fft_convolve2d_sum(i, filters, mode=mode, boundary=boundary)
+        responses.append(r)
+    return responses
+
+
+def _compute_filters_responses3(images, filters, norm_func=centralize,
+                                mode='same', boundary='symmetric'):
     responses = []
     for i in images:
         if norm_func:
@@ -114,12 +137,53 @@ def compute_filters_responses(images, filters, norm_func=centralize,
 
 
 @ndfeature
-def _network_response(x, filters, norm_func=centralize, hidden_mode='same',
-                      visible_mode='valid', boundary='symmetric'):
+def _network_response1(x, filters, norm_func=centralize, hidden_mode='same',
+                       visible_mode='valid', boundary='symmetric'):
     limit = len(filters) - 1
-    if norm_func:
-        x = norm_func(x)
+    xs = [x]
     for j, fs in enumerate(filters):
+        if norm_func:
+            xs = normalize_images(xs, norm_func=norm_func)
+        nxs = []
+        for x in xs:
+            for f in fs:
+                if j < limit:
+                    x = fft_convolve2d(x, f, mode=hidden_mode,
+                                       boundary=boundary, axis=0)
+                else:
+                    x = fft_convolve2d(x, f, mode=visible_mode,
+                                       boundary=boundary, axis=0)
+                nxs.append(x)
+        xs = nxs
+    if isinstance(x, Image):
+        return images_to_image(xs)
+    else:
+        return np.asarray(xs).reshape((-1, x.shape[-2:]))
+
+
+@ndfeature
+def _network_response2(x, filters, norm_func=centralize, hidden_mode='same',
+                       visible_mode='valid', boundary='symmetric'):
+    limit = len(filters) - 1
+    for j, fs in enumerate(filters):
+        if norm_func:
+            x = norm_func(x)
+        if j < limit:
+            x = fft_convolve2d_sum(x, fs, mode=hidden_mode,
+                                   boundary=boundary)
+        else:
+            x = fft_convolve2d_sum(x, fs, mode=visible_mode,
+                                   boundary=boundary)
+    return x
+
+
+@ndfeature
+def _network_response3(x, filters, norm_func=centralize, hidden_mode='same',
+                       visible_mode='valid', boundary='symmetric'):
+    limit = len(filters) - 1
+    for j, fs in enumerate(filters):
+        if norm_func:
+            x = norm_func(x)
         if j < limit:
             x = fft_convolve2d_sum(x, fs, mode=hidden_mode,
                                    boundary=boundary, axis=1)
@@ -131,7 +195,8 @@ def _network_response(x, filters, norm_func=centralize, hidden_mode='same',
 
 @ndfeature
 def _kernel_response(x, compute_kernel, filters_shape, layer=None,
-                     norm_func=centralize, mode='valid', boundary='symmetric'):
+                     norm_func=centralize, mode='valid',
+                     boundary='symmetric'):
     if norm_func:
         x = norm_func(x)
     # extended shape
@@ -169,6 +234,21 @@ class LinDeepConvNet(object):
     r"""
     Linear Deep Convolutional Network Interface
     """
+
+    def __init__(self, architecture=3):
+        if architecture == 1:
+            self._network_response = _network_response1
+            self.__compute_kernel = _compute_kernel1
+        elif architecture == 2:
+            self._network_response = _network_response2
+            self.__compute_kernel = _compute_kernel2
+        elif architecture == 3:
+            self._network_response = _network_response3
+            self.__compute_kernel = _compute_kernel3
+        else:
+            raise ValueError('architecture={} must be an integer between 1 '
+                             'and 3.').format(architecture)
+
     @property
     def n_layers(self):
         return len(self._n_filters)
@@ -229,15 +309,17 @@ class LinDeepConvNet(object):
 
     def _compute_kernel(self, layer=None, ext_shape=None):
         layer = _check_layer(layer, self.n_layers)
-        return _compute_kernel3(self._filters[:layer+1], ext_shape=ext_shape)
+        return self.__compute_kernel(self._filters[:layer+1],
+                                     ext_shape=ext_shape)
 
     def network_response(self, image, layer=None, hidden_mode='same',
                          visible_mode='valid', boundary='symmetric'):
         layer = _check_layer(layer, self.n_layers)
-        return _network_response(image, self._filters[:layer+1],
-                                 norm_func=self.norm_func,
-                                 hidden_mode=hidden_mode,
-                                 visible_mode=visible_mode, boundary=boundary)
+        return self._network_response(image, self._filters[:layer+1],
+                                      norm_func=self.norm_func,
+                                      hidden_mode=hidden_mode,
+                                      visible_mode=visible_mode,
+                                      boundary=boundary)
 
     def kernel_response(self, x, layer=None, mode='valid',
                         boundary='symmetric'):
@@ -250,6 +332,18 @@ class LearnableLDCN(LinDeepConvNet):
     r"""
     Learnable Linear Deep Convolutional Network Interface
     """
+    def __init__(self, architecture=3):
+        super(LearnableLDCN, self).__init__(architecture=architecture)
+        if architecture == 1:
+            self.compute_filters_responses = _compute_filters_responses1
+        elif architecture == 2:
+            self.compute_filters_responses = _compute_filters_responses2
+        elif architecture == 3:
+            self.compute_filters_responses = _compute_filters_responses3
+        else:
+            raise ValueError('architecture={} must be an integer between 1 '
+                             'and 3.').format(architecture)
+
     def learn_network_from_grid(self, images, stride=4, verbose=False,
                                 **kwargs):
         stride = _check_stride(stride)

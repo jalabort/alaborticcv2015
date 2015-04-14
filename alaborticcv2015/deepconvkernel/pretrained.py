@@ -6,7 +6,8 @@ class PreTrainedLDCN(LinDeepConvNet):
     r"""
     Pre-trained Linear Deep Convolutional Network Class
     """
-    def __init__(self, norm_func=centralize):
+    def __init__(self, architecture=3, norm_func=centralize):
+        super(PreTrainedLDCN, self).__init__(architecture=architecture)
         self.norm_func = norm_func
 
     def build_network(self, filters):

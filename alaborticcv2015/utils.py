@@ -35,6 +35,7 @@ def extract_patches_from_grid(image, patch_shape=(7, 7), stride=(4, 4),
     return patches
 
 
+# TODO: make faster by pre-allocating memory instead of using concatenate
 def extract_patches(images, extract=extract_patches_from_grid,
                     patch_shape=(7, 7), as_single_array=False,
                     dtype=np.float32, **kwargs):
@@ -56,8 +57,22 @@ def extract_patches(images, extract=extract_patches_from_grid,
     return patches
 
 
-def normalize_patches(patches, norm_func=centralize):
+def normalize_images(images, norm_func=centralize):
     if norm_func is not None:
-        for j, p in enumerate(patches):
-            patches[j] = norm_func(p)
-    return patches
+        for j, i in enumerate(images):
+            images[j] = norm_func(i)
+    return images
+
+
+def images_to_image(images):
+    n_images = len(images[0])
+    n_channels = images[0].n_channels
+    pixels = np.empty((n_images * n_channels) + images[0].shape)
+    start = 0
+    for i in images:
+        finish = start + n_channels
+        pixels[start:finish] = i.pixels
+        start = finish
+    image = images[0].copy()
+    image.pixels = pixels
+    return image

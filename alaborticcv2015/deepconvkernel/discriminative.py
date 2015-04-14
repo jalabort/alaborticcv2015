@@ -3,7 +3,7 @@ import numpy as np
 from menpo.math import mccf, lda
 from menpo.feature import centralize
 from menpo.visualize import print_dynamic, progress_bar_str
-from alaborticcv2015.utils import normalize_patches
+from alaborticcv2015.utils import normalize_images
 from .base import LearnableLDCN, compute_filters_responses
 
 

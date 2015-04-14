@@ -3,8 +3,8 @@ import warnings
 from menpo.feature import centralize
 from menpo.visualize import print_dynamic, progress_bar_str
 from alaborticcv2015.deepconvkernel.base import _parse_filters
-from alaborticcv2015.utils import normalize_patches
-from .base import LearnableLDCN, compute_filters_responses
+from alaborticcv2015.utils import normalize_images
+from .base import LearnableLDCN
 
 
 def _parse_params(params, n_layers):
@@ -37,8 +37,9 @@ class SelfSimLDCN(LearnableLDCN):
     r"""
     Self-Similarity Linear Deep Convolutional Network Class
     """
-    def __init__(self, n_layers=3, patch_shape=(7, 7),
+    def __init__(self, architecture=3, n_layers=3, patch_shape=(7, 7),
                  norm_func=centralize, verbose=False):
+        super(SelfSimLDCN, self).__init__(architecture=architecture)
         self._n_layers = n_layers
         self.patch_shape = patch_shape
         self.norm_func = norm_func
@@ -61,13 +62,13 @@ class SelfSimLDCN(LearnableLDCN):
             # flip filters
             fs = fs[..., ::-1, ::-1]
             # normalize filters
-            fs = normalize_patches(fs, norm_func=self.norm_func)
+            fs = normalize_images(fs, norm_func=self.norm_func)
             # save filters
             filters.append(fs)
             if l != self.n_layers:
                 # compute responses if not last layer
-                images = compute_filters_responses(images, fs,
-                                                   norm_func=self.norm_func)
+                images = self.compute_filters_responses(
+                    images, fs, norm_func=self.norm_func)
 
         self._filters = filters
         self._n_filters = _parse_filters(filters)
