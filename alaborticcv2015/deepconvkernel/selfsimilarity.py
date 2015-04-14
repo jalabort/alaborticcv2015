@@ -68,7 +68,8 @@ class SelfSimLDCN(LearnableLDCN):
                 images = compute_filters_responses(images, fs,
                                                    norm_func=self.norm_func)
 
-        self._n_filters = _parse_filters(self._filters)
+        self._filters = filters
+        self._n_filters = _parse_filters(filters)
 
         if verbose:
             print_dynamic('{}: Done!\n'.format(string))

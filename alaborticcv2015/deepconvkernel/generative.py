@@ -1,55 +1,53 @@
 from __future__ import division
+import numpy as np
 import warnings
-from menpo.model import PCAModel, ICAModel, NMFModel
-from menpo.math.decomposition.ica import _batch_ica, negentropy_logcosh
+from menpo.math import pca, ica, nmf
+from menpo.math.decomposition.ica import _batch_ica, negentropy_exp
 from menpo.visualize import print_dynamic, progress_bar_str
 from alaborticcv2015.utils import normalize_patches, centralize
 from .base import LearnableLDCN, compute_filters_responses
 
 
-def learn_pca_filters(patches, n_filters=8, normalize=centralize, dtype=None):
+def learn_pca_filters(patches, n_filters=8):
     r"""
-    Learn PCA convolution _filters
+    Learn PCA convolution filters
     """
-    if normalize:
-        # normalize patches if required
-        for j, p in enumerate(patches):
-            patches[j] = normalize(p, dtype=dtype)
-    # learn pca model
-    pca = PCAModel(patches)
-    # set active number of components
-    pca.n_active_components = n_filters
-    # obtain and return _filters
-    return [pca.template_instance.from_vector(pc) for pc in pca.components]
+    n_patches = patches.shape[0]
+    patch_shape = patches.shape[-3:]
+    patches = patches.reshape((n_patches, -1))
+    # learn pca filters
+    pca_filters = pca(patches, inplace=True)[0]
+    pca_filters = pca_filters[:n_filters, :]
+    return pca_filters.reshape((-1,) + patch_shape)
 
 
-def learn_ica_filters(patches, n_filters=8, normalize=centralize, dtype=None,
-                      algorithm=_batch_ica, negentropy=negentropy_logcosh,
-                      max_iters=500):
+def learn_ica_filters(patches, n_filters=8, algorithm=_batch_ica,
+                      negentropy=negentropy_exp, max_iters=500, verbose=False):
     r"""
-    Learn ICA convolution _filters
+    Learn ICA convolution filters
     """
-    if normalize:
-        # normalize patches if required
-        for j, p in enumerate(patches):
-            patches[j] = normalize(p, dtype=dtype)
-    # learn ica model
-    ica = ICAModel(patches, algorithm=algorithm, negentropy_approx=negentropy,
-                   n_components=n_filters, max_iters=max_iters)
-    # obtain and return _filters
-    return [ica.template_instance.from_vector(ic) for ic in ica.components]
+    n_patches = patches.shape[0]
+    patch_shape = patches.shape[-3:]
+    patches = patches.reshape((n_patches, -1))
+    # learn ica filters
+    ica_filters = ica(patches, algorithm=algorithm,
+                      negentropy_approx=negentropy, n_components=n_filters,
+                      max_iters=max_iters, verbose=verbose)[0]
+    return ica_filters.reshape((-1,) + patch_shape)
 
 
 def learn_nmf_filters(patches, n_filters=8, max_iters=500, verbose=False,
                       **kwargs):
     r"""
-    Learn NMF convolution _filters
+    Learn NMF convolution filters
     """
-    # learn nmf model
-    nmf = NMFModel(patches, n_components=n_filters, max_iters=max_iters,
-                   verbose=verbose, **kwargs)
-    # obtain and return _filters
-    return [nmf.template_instance.from_vector(nf) for nf in nmf.components]
+    n_patches = patches.shape[0]
+    patch_shape = patches.shape[-3:]
+    patches = patches.reshape((n_patches, -1))
+    # learn nmf filters
+    nmf_filters = nmf(patches, n_components=n_filters, max_iters=max_iters,
+                      verbose=verbose, **kwargs)
+    return nmf_filters.reshape((-1,) + patch_shape)
 
 
 def _parse_params(learn_filters, n_filters, n_layers):
@@ -141,31 +139,37 @@ class GenerativeLDCN(LearnableLDCN):
         # # convert images to the appropriate type
         # convert_images_to_dtype_inplace(images, dtype=self.dtype)
 
+        n_ch = images[0].n_channels
         filters = []
-        for j, (lfs, nfs) in enumerate(zip(self._learn_filters,
+        for l, (lfs, nfs) in enumerate(zip(self._learn_filters,
                                            self._n_filters)):
             if verbose:
                 print_dynamic('{}: {}'.format(
-                    string, progress_bar_str(j/self.n_layers, show_bar=True)))
+                    string, progress_bar_str(l/self.n_layers, show_bar=True)))
 
             # extract patches
             patches = extract_patches_func(images)
             # normalize patches
             patches = normalize_patches(patches, norm_func=self.norm_func)
-            # learn level _filters
-            fs = []
+            # learn level filters
+            fs = np.empty((self.n_filters_layer[l], n_ch) + self.patch_shape)
+            start = 0
             for (lf, nf) in zip(lfs, nfs):
-                fs.append(lf(patches, nf, **kwargs))
+                fs[start:start+nf] = lf(patches, nf, **kwargs)
+                start += nf
             # delete patches
             del patches
             # normalize filters
             fs = normalize_patches(fs, norm_func=self.norm_func)
             # save filters
             filters.append(fs)
-            if j != self.n_layers:
+            if l != self.n_layers:
                 # compute responses if not last layer
                 images = compute_filters_responses(images, fs,
                                                    norm_func=self.norm_func)
+                n_ch = self.n_filters_layer[l]
+
+        self._filters = filters
 
         if verbose:
             print_dynamic('{}: Done!\n'.format(string))

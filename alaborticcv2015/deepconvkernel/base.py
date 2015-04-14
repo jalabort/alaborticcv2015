@@ -232,14 +232,15 @@ class LinDeepConvNet(object):
         return _compute_kernel3(self._filters[:layer+1], ext_shape=ext_shape)
 
     def network_response(self, image, layer=None, hidden_mode='same',
-                         visible_mode='same', boundary='constant'):
+                         visible_mode='valid', boundary='symmetric'):
         layer = _check_layer(layer, self.n_layers)
         return _network_response(image, self._filters[:layer+1],
                                  norm_func=self.norm_func,
                                  hidden_mode=hidden_mode,
                                  visible_mode=visible_mode, boundary=boundary)
 
-    def kernel_response(self, x, layer=None, mode='same', boundary='constant'):
+    def kernel_response(self, x, layer=None, mode='valid',
+                        boundary='symmetric'):
         return _kernel_response(x, self._compute_kernel, self.filters_shape,
                                 layer=layer, norm_func=self.norm_func,
                                 mode=mode, boundary=boundary)

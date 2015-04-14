@@ -1,13 +1,9 @@
 from __future__ import division
-
 import numpy as np
 from numpy.fft import fft2, ifft2, ifftshift
-
 from functools import wraps
-
 from menpo.feature import ndfeature
 from menpo.feature.base import rebuild_feature_image
-from menpo.image import Image
 from menpo.shape import PointCloud
 
 # Cache the greyscale luminosity coefficients as they are invariant.
@@ -199,13 +195,21 @@ def extract_patches_from_grid(image, patch_shape=(7, 7), stride=(4, 4),
 def extract_patches(images, extract=extract_patches_from_grid,
                     patch_shape=(7, 7), as_single_array=False,
                     dtype=np.float32, **kwargs):
-    patches = []
-    for i in images:
-        ps = extract(i, patch_shape=patch_shape, dtype=dtype,
+    if not as_single_array:
+        patches = []
+        for i in images:
+            ps = extract(i, patch_shape=patch_shape, dtype=dtype,
+                         as_single_array=as_single_array, **kwargs)
+            patches.append(ps.reshape((-1,) + ps.shape[-3:]))
+    else:
+        ps = extract(images[0], patch_shape=patch_shape, dtype=dtype,
                      as_single_array=as_single_array, **kwargs)
-        patches.append(ps)
-    if as_single_array:
-        patches = np.asarray(patches).reshape((-1,) + patches[0].shape[-3:])
+        patches = ps.reshape((-1,) + ps.shape[-3:])
+        for i in images:
+            ps = extract(i, patch_shape=patch_shape, dtype=dtype,
+                         as_single_array=as_single_array, **kwargs)
+            ps = ps.reshape((-1,) + ps.shape[-3:])
+            patches = np.concatenate((patches, ps), axis=0)
     return patches
 
 
