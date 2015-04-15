@@ -8,7 +8,7 @@ from menpo.feature import ndfeature, centralize
 from menpo.math import pad, crop, fft_convolve2d, fft_convolve2d_sum
 from alaborticcv2015.utils import (
     normalize_images, extract_patches, extract_patches_from_grid,
-    extract_patches_from_landmarks, images_to_image)
+    extract_patches_from_landmarks, images_to_image, image_to_images)
 
 
 def _parse_filters(filters):
@@ -100,9 +100,9 @@ def _compute_filters_responses1(images, filters, norm_func=centralize,
     for i in images:
         if norm_func:
             i = norm_func(i)
-        for f in filters:
-            r = fft_convolve2d(i, f, mode=mode, boundary=boundary)
-            responses.append(r)
+        r = fft_convolve2d(i, filters, mode=mode, boundary=boundary)
+        responses += image_to_images(r)
+        print responses[0].pixels.shape
     return responses
 
 
@@ -112,7 +112,8 @@ def _compute_filters_responses2(images, filters, norm_func=centralize,
     for i in images:
         if norm_func:
             i = norm_func(i)
-        r = fft_convolve2d_sum(i, filters, mode=mode, boundary=boundary)
+        r = fft_convolve2d_sum(i, filters, mode=mode, boundary=boundary,
+                               axes=0)
         responses.append(r)
     return responses
 
@@ -129,7 +130,6 @@ def _compute_filters_responses3(images, filters, norm_func=centralize,
     return responses
 
 
-@ndfeature
 def _network_response1(x, filters, norm_func=centralize, hidden_mode='same',
                        visible_mode='valid', boundary='symmetric'):
     limit = len(filters) - 1
@@ -139,14 +139,11 @@ def _network_response1(x, filters, norm_func=centralize, hidden_mode='same',
             xs = normalize_images(xs, norm_func=norm_func)
         nxs = []
         for x in xs:
-            for f in fs:
-                if j < limit:
-                    x = fft_convolve2d(x, f, mode=hidden_mode,
-                                       boundary=boundary, axis=0)
-                else:
-                    x = fft_convolve2d(x, f, mode=visible_mode,
-                                       boundary=boundary, axis=0)
-                nxs.append(x)
+            if j < limit:
+                x = fft_convolve2d(x, fs, mode=hidden_mode, boundary=boundary)
+            else:
+                x = fft_convolve2d(x, fs, mode=visible_mode, boundary=boundary)
+            nxs += image_to_images(x)
         xs = nxs
     if isinstance(x, Image):
         return images_to_image(xs)
@@ -154,7 +151,6 @@ def _network_response1(x, filters, norm_func=centralize, hidden_mode='same',
         return np.asarray(xs).reshape((-1, x.shape[-2:]))
 
 
-@ndfeature
 def _network_response2(x, filters, norm_func=centralize, hidden_mode='same',
                        visible_mode='valid', boundary='symmetric'):
     limit = len(filters) - 1
@@ -170,7 +166,6 @@ def _network_response2(x, filters, norm_func=centralize, hidden_mode='same',
     return x
 
 
-@ndfeature
 def _network_response3(x, filters, norm_func=centralize, hidden_mode='same',
                        visible_mode='valid', boundary='symmetric'):
     limit = len(filters) - 1
@@ -227,7 +222,6 @@ class LinDeepConvNet(object):
     r"""
     Linear Deep Convolutional Network Interface
     """
-
     def __init__(self, architecture=3):
         if architecture == 1:
             self._network_response = _network_response1

@@ -33,7 +33,7 @@ def learn_ica_filters(patches, n_filters=8, algorithm=_batch_ica,
     # learn ica filters
     ica_filters = ica(patches, algorithm=algorithm,
                       negentropy_approx=negentropy, n_components=n_filters,
-                      max_iters=max_iters, verbose=verbose)[0]
+                      max_iters=max_iters, inplace=True, verbose=verbose)[0]
     return ica_filters.reshape((-1,) + patch_shape)
 
 

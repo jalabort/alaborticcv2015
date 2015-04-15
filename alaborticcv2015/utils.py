@@ -49,7 +49,7 @@ def extract_patches(images, extract=extract_patches_from_grid,
         ps = extract(images[0], patch_shape=patch_shape, dtype=dtype,
                      as_single_array=as_single_array, **kwargs)
         patches = ps.reshape((-1,) + ps.shape[-3:])
-        for i in images:
+        for i in images[1:]:
             ps = extract(i, patch_shape=patch_shape, dtype=dtype,
                          as_single_array=as_single_array, **kwargs)
             ps = ps.reshape((-1,) + ps.shape[-3:])
@@ -71,10 +71,11 @@ def normalize_filters(filters, norm_func=centralize):
     return filters
 
 
+# TODO: should work for both images and ndarrays
 def images_to_image(images):
-    n_images = len(images[0])
+    n_images = len(images)
     n_channels = images[0].n_channels
-    pixels = np.empty((n_images * n_channels) + images[0].shape)
+    pixels = np.empty((n_images * n_channels,) + images[0].shape)
     start = 0
     for i in images:
         finish = start + n_channels
@@ -83,3 +84,14 @@ def images_to_image(images):
     image = images[0].copy()
     image.pixels = pixels
     return image
+
+
+# TODO: should work for both images and ndarrays
+def image_to_images(image):
+    n_images, n_channels = image.pixels.shape[:2]
+    images = []
+    for j in range(n_images):
+        i = image.copy()
+        i.pixels = image.pixels[j]
+        images.append(i)
+    return images
