@@ -3,9 +3,10 @@ import abc
 import numpy as np
 from numpy.fft import fft2, ifft2, fftshift
 import warnings
+from menpo.math import pad, crop, fft_convolve2d, fft_convolve2d_sum
 from menpo.image import Image
 from menpo.feature import ndfeature, centralize
-from menpo.math import pad, crop, fft_convolve2d, fft_convolve2d_sum
+from menpo.visualize import print_dynamic, progress_bar_str
 from alaborticcv2015.utils import (
     normalize_images, extract_patches, extract_patches_from_grid,
     extract_patches_from_landmarks, images_to_image, image_to_images)
@@ -95,38 +96,67 @@ def _compute_kernel3(filters, ext_shape=None):
 
 
 def _compute_filters_responses1(images, filters, norm_func=centralize,
-                                mode='same', boundary='symmetric'):
+                                mode='same', boundary='symmetric',
+                                verbose=False, string=''):
+    if verbose:
+        string += 'Computing Filter Responses '
+    n_images = len(images)
     responses = []
-    for i in images:
+    for j, i in enumerate(images):
+        if verbose:
+            print_dynamic('{}{}'.format(
+                string, progress_bar_str(j/n_images, show_bar=True)))
         if norm_func:
             i = norm_func(i)
         r = fft_convolve2d(i, filters, mode=mode, boundary=boundary)
         responses += image_to_images(r)
-        print responses[0].pixels.shape
+    if verbose:
+        print_dynamic('{}{}'.format(
+            string, progress_bar_str(1, show_bar=True)))
     return responses
 
 
 def _compute_filters_responses2(images, filters, norm_func=centralize,
-                                mode='same', boundary='symmetric'):
+                                mode='same', boundary='symmetric',
+                                verbose=False, string=''):
+    if verbose:
+        string += 'Computing Filter Responses '
+    n_images = len(images)
     responses = []
-    for i in images:
+    for j, i in enumerate(images):
+        if verbose:
+            print_dynamic('{}{}'.format(
+                string, progress_bar_str(j/n_images, show_bar=True)))
         if norm_func:
             i = norm_func(i)
         r = fft_convolve2d_sum(i, filters, mode=mode, boundary=boundary,
-                               axes=0)
+                               axis=0)
         responses.append(r)
+    if verbose:
+        print_dynamic('{}{}'.format(
+            string, progress_bar_str(1, show_bar=True)))
     return responses
 
 
 def _compute_filters_responses3(images, filters, norm_func=centralize,
-                                mode='same', boundary='symmetric'):
+                                mode='same', boundary='symmetric',
+                                verbose=False, string=''):
+    if verbose:
+        string += 'Computing Filter Responses '
+    n_images = len(images)
     responses = []
-    for i in images:
+    for j, i in enumerate(images):
+        if verbose:
+            print_dynamic('{}{}'.format(
+                string, progress_bar_str(j/n_images, show_bar=True)))
         if norm_func:
             i = norm_func(i)
         r = fft_convolve2d_sum(i, filters, mode=mode, boundary=boundary,
                                axis=1)
         responses.append(r)
+    if verbose:
+        print_dynamic('{}{}'.format(
+            string, progress_bar_str(1, show_bar=True)))
     return responses
 
 
@@ -222,7 +252,7 @@ class LinDeepConvNet(object):
     r"""
     Linear Deep Convolutional Network Interface
     """
-    def __init__(self, architecture=3):
+    def __init__(self, architecture=3, norm_func=centralize):
         if architecture == 1:
             self._network_response = _network_response1
             self.__compute_kernel = _compute_kernel1
@@ -235,6 +265,7 @@ class LinDeepConvNet(object):
         else:
             raise ValueError('architecture={} must be an integer between 1 '
                              'and 3.').format(architecture)
+        self.norm_func = norm_func
 
     @property
     def n_layers(self):
@@ -319,8 +350,10 @@ class LearnableLDCN(LinDeepConvNet):
     r"""
     Learnable Linear Deep Convolutional Network Interface
     """
-    def __init__(self, architecture=3):
-        super(LearnableLDCN, self).__init__(architecture=architecture)
+    def __init__(self, architecture=3, norm_func=centralize,
+                 patch_shape=(7, 7), mode='same', boundary='constant'):
+        super(LearnableLDCN, self).__init__(architecture=architecture,
+                                            norm_func=norm_func)
         if architecture == 1:
             self.compute_filters_responses = _compute_filters_responses1
         elif architecture == 2:
@@ -330,25 +363,32 @@ class LearnableLDCN(LinDeepConvNet):
         else:
             raise ValueError('architecture={} must be an integer between 1 '
                              'and 3.').format(architecture)
+        self.patch_shape = patch_shape
+        self.mode = mode
+        self.boundary = boundary
 
     def learn_network_from_grid(self, images, stride=4, verbose=False,
                                 **kwargs):
         stride = _check_stride(stride)
 
-        def extract_patches_func(imgs):
+        def extract_patches_func(imgs, flatten=True, string=''):
             return extract_patches(imgs, extract=extract_patches_from_grid,
                                    patch_shape=self.patch_shape,
-                                   stride=stride, as_single_array=True)
+                                   stride=stride, as_single_array=True,
+                                   flatten=flatten, verbose=verbose,
+                                   string=string)
         self._learn_network(images, extract_patches_func, verbose=verbose,
                             **kwargs)
 
     def learn_network_from_landmarks(self, images, group=None, label=None,
                                      verbose=False, **kwargs):
-        def extract_patches_func(imgs):
+        def extract_patches_func(imgs, flatten=True, string=''):
             return extract_patches(imgs,
                                    extract=extract_patches_from_landmarks,
                                    patch_shape=self.patch_shape, group=group,
-                                   label=label, as_single_array=True)
+                                   label=label, as_single_array=True,
+                                   flatten=flatten, verbose=verbose,
+                                   string=string)
         self._learn_network(images, extract_patches_func, verbose=verbose,
                             **kwargs)
 

@@ -120,35 +120,37 @@ class GenerativeLDCN(LearnableLDCN):
     r"""
     Generative Linear Deep Convolutional Network Class
     """
-    def __init__(self, architecture=3, learn_filters=learn_pca_filters,
-                 n_filters=8, n_layers=3, patch_shape=(7, 7),
-                 norm_func=centralize, mode='same', boundary='constant'):
-        super(GenerativeLDCN, self).__init__(architecture=architecture)
+    def __init__(self, learn_filters=learn_pca_filters, n_filters=8,
+                 n_layers=3, architecture=3, norm_func=centralize,
+                 patch_shape=(7, 7), mode='same', boundary='constant'):
+        super(GenerativeLDCN, self).__init__(architecture=architecture,
+                                             norm_func=norm_func,
+                                             patch_shape=patch_shape,
+                                             mode=mode, boundary=boundary)
         self._learn_filters, self._n_filters = _parse_params(
             learn_filters, n_filters, n_layers)
-        self.patch_shape = patch_shape
-        self.norm_func = norm_func
-        self.mode = mode
-        self.boundary = boundary
 
     def _learn_network(self, images, extract_patches_func, verbose=False,
                        **kwargs):
         if verbose:
-            string = '- Learning network'
+            print '- Learning network'
 
         # # convert images to the appropriate type
         # convert_images_to_dtype_inplace(images, dtype=self.dtype)
 
+        string = ''
         n_ch = images[0].n_channels
         filters = []
         for l, (lfs, nfs) in enumerate(zip(self._learn_filters,
                                            self._n_filters)):
             if verbose:
-                print_dynamic('{}: {}'.format(
-                    string, progress_bar_str(l/self.n_layers, show_bar=True)))
-
+                string = '  - Level {}: '.format(l)
             # extract patches
-            patches = extract_patches_func(images)
+            patches = extract_patches_func(images, string=string)
+            if verbose:
+                string2 = string + 'Learning Filters '
+                print_dynamic('{}{}'.format(
+                    string2, progress_bar_str(0, show_bar=True)))
             # normalize patches
             patches = normalize_images(patches, norm_func=self.norm_func)
             # learn level filters
@@ -163,13 +165,15 @@ class GenerativeLDCN(LearnableLDCN):
             fs = normalize_images(fs, norm_func=self.norm_func)
             # save filters
             filters.append(fs)
-            if l != self.n_layers:
+            if verbose:
+                print_dynamic('{}{}'.format(
+                    string2, progress_bar_str(1, show_bar=True)))
+            if l < self.n_layers-1:
                 # if not last layer, compute responses
                 images = self.compute_filters_responses(
-                    images, fs, norm_func=self.norm_func)
+                    images, fs, norm_func=self.norm_func, mode=self.mode,
+                    boundary=self.boundary, verbose=verbose, string=string)
                 n_ch = images[0].n_channels
-
+            if verbose:
+                print_dynamic('{}Done!\n'.format(string))
         self._filters = filters
-
-        if verbose:
-            print_dynamic('{}: Done!\n'.format(string))

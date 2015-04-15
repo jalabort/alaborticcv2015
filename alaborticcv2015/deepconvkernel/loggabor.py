@@ -38,9 +38,10 @@ class LogGaborLDCN(LinDeepConvNet):
     r"""
     Log-Gabor Linear Deep Convolutional Network Class
     """
-    def __init__(self, architecture=3, params=None, n_layers=3,
-                 patch_shape=(7, 7), norm_func=centralize):
-        super(LogGaborLDCN, self).__init__(architecture=architecture)
+    def __init__(self, params=None, n_layers=3, architecture=3,
+                 norm_func=centralize, patch_shape=(7, 7)):
+        super(LogGaborLDCN, self).__init__(architecture=architecture,
+                                           norm_func=norm_func)
         if architecture == 1 or architecture == 2:
             self.build_network = self._build_network12
         elif architecture == 3:
@@ -50,7 +51,6 @@ class LogGaborLDCN(LinDeepConvNet):
                              'and 3.').format(architecture)
         self.params, self._n_filters = _parse_params(params, n_layers)
         self.patch_shape = patch_shape
-        self.norm_func = norm_func
 
     def _build_network12(self, n_channels=3):
         filters = []

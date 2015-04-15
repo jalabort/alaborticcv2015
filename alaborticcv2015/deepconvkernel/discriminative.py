@@ -3,182 +3,117 @@ import numpy as np
 from menpo.math import mccf, lda
 from menpo.feature import centralize
 from menpo.visualize import print_dynamic, progress_bar_str
-from alaborticcv2015.utils import normalize_images
-from .base import LearnableLDCN, compute_filters_responses
+from alaborticcv2015.utils import normalize_images, generate_gaussian_response
+from .base import LearnableLDCN, _parse_filters
 
 
-def learn_mccf_filters(patches):
+def learn_mccf_filters(patches, patch_shape=(7, 7), cov=3, l=0.01,
+                       boundary='constant', verbose=False, string=''):
     r"""
     Learn MCCF convolution filters
     """
-    n_patches = patches.shape[0]
-    patch_shape = patches.shape[-3:]
-    patches = patches.reshape((n_patches, -1))
-    # learn pca filters
-    lda_filters = mccf(patches, inplace=True)[0]
-    return lda_filters.reshape((-1,) + patch_shape)
+    if verbose:
+        string += 'Learning Filters '
+    n_filters = patches.shape[1]
+    n_channels = patches.shape[2]
+    # generate desired response
+    response = generate_gaussian_response(patch_shape, cov)
+    # learn mccf filters
+    mccf_filters = np.empty((n_filters, n_channels) + patch_shape)
+    for j in range(n_filters):
+        if verbose:
+            print_dynamic('{}{}'.format(
+                string, progress_bar_str(j/n_filters, show_bar=True)))
+        mccf_filters[j] = mccf(patches[:, j], response, l=l,
+                               boundary=boundary)[0]
+    return mccf_filters
 
 
-def learn_lda_filters(patches, n_filters=8):
+def learn_lda_filters(patches, n_filters=None, verbose=False, string='',
+                      **kwargs):
     r"""
     Learn LDA convolution filters
     """
-    n_patches = patches.shape[0]
+    if verbose:
+        string += 'Learning Filters '
+    n_patches, n_classes = patches.shape[:2]
     patch_shape = patches.shape[-3:]
-    patches = patches.reshape((n_patches, -1))
+    if n_filters is None:
+        n_filters = np.minimum(n_classes, np.prod(patch_shape)) - 1
+    # reshape patches
+    patches = np.rollaxis(patches, 1, 0)
+    patches = patches.reshape((n_patches * n_classes, -1))
+    # generate class offsets
+    class_offsets = [n_patches * j for j in range(1, n_classes)]
     # learn lda filters
-    lda_filters = lda(patches, inplace=True)[0]
-    lda_filters = lda_filters[:n_filters, :]
+    lda_filters = lda(patches, class_offsets, n_components=n_filters,
+                      inplace=True)[0]
     return lda_filters.reshape((-1,) + patch_shape)
 
 
-class DiscriminativeLDCN():
-
-    def __init__(self, learn_filters=learn_lda_filters, n_levels=3,
-                 n_filters=8, patch_size=(7, 7), mean_centre=True,
-                 padding='constant'):
+class DiscriminativeLDCN(LearnableLDCN):
+    r"""
+    Discriminative Linear Deep Convolutional Network Class
+    """
+    def __init__(self, learn_filters=learn_mccf_filters, n_layers=3,
+                 architecture=3, norm_func=centralize, patch_shape=(31, 31),
+                 mode='same', boundary='constant'):
+        super(DiscriminativeLDCN, self).__init__(architecture=architecture,
+                                                 norm_func=norm_func,
+                                                 patch_shape=patch_shape,
+                                                 mode=mode, boundary=boundary)
         self._learn_filters = learn_filters
-        self.n_levels = n_levels
-        self.n_filters = n_filters
-        self.patch_size = patch_size
-        self.mean_centre = mean_centre
-        self.padding = padding
+        self._n_layers = n_layers
+        print learn_filters
+        if learn_filters is learn_mccf_filters:
+            self.context_shape = self.patch_shape * 3
 
-    def learn_network(self, images, group=None, label=None,
-                      verbose=False, **kwargs):
+    def learn_network_from_grid(self, images, stride=4, verbose=False,
+                                **kwargs):
+        raise Exception('method learn_network_from_grid is not available on '
+                        'DiscriminativeLDCN.')
+
+    def _learn_network(self, images, extract_patches_func, verbose=False,
+                       **kwargs):
         if verbose:
-            string = '- Learning network'
-        # extract centres
-        centres = [i.landmarks[group][label] for i in images]
-        # initialize level_image and list of _filters
-        level_images = images
-        self.filters = []
-        for j in range(self.n_levels):
+            print '- Learning network'
+
+        # # convert images to the appropriate type
+        # convert_images_to_dtype_inplace(images, dtype=self.dtype)
+
+        string = ''
+        filters = []
+        for l in range(self._n_layers):
             if verbose:
-                print_dynamic('{}: {}'.format(
-                    string, progress_bar_str(j/self.n_levels, show_bar=True)))
-            # extract level patches
-            level_patches, level_classes = self._extract_patches(level_images,
-                                                                 centres)
-            # learn level _filters
-            level_filters = self._learn_filters(level_patches, level_classes,
-                                                self.n_filters, **kwargs)
-            # compute level responses lists
-            level_images = self._compute_filter_responses(level_images,
-                                                          level_filters)
-            # save level _filters
-            self.filters.append(level_filters)
+                string = '  - Level {}: '.format(l)
+            # extract patches
+            patches = extract_patches_func(images, flatten=False,
+                                           string=string)
+            if verbose:
+                string2 = string + 'Learning Filters '
+                print_dynamic('{}{}'.format(
+                    string2, progress_bar_str(0, show_bar=True)))
+            # normalize patches
+            patches = normalize_images(patches, norm_func=self.norm_func)
+            # learn level filters
+            fs = self._learn_filters(patches, patch_shape=self.patch_shape,
+                                     verbose=verbose, string=string, **kwargs)
+            # delete patches
+            del patches
+            # normalize filters
+            fs = normalize_images(fs, norm_func=self.norm_func)
+            # save filters
+            filters.append(fs)
+            if verbose:
+                print_dynamic('{}{}'.format(
+                    string2, progress_bar_str(1, show_bar=True)))
+            if l < self._n_layers-1:
+                # if not last layer, compute responses
+                images = self.compute_filters_responses(
+                    images, fs, norm_func=self.norm_func, mode=self.mode,
+                    boundary=self.boundary, verbose=verbose, string=string)
+            if verbose:
+                print_dynamic('{}Done!\n'.format(string))
+        self._filters = filters
+        self._n_filters = _parse_filters(filters)
 
-        if verbose:
-            print_dynamic('{}: Done!\n'.format(string))
-
-    def _extract_patches(self, images, centres):
-        patches = []
-        classes = []
-        for i, c in zip(images, centres):
-            i_patches = i.extract_patches(c, patch_size=self.patch_size)
-            for j, p in enumerate(i_patches):
-                patches.append(p)
-                classes.append(j)
-        return patches, classes
-
-    def _compute_filter_responses(self, images, filters):
-        # compute  and return list of responses
-        return [self._apply_filters(i, filters) for i in images]
-
-    def _apply_filters(self, image, filters):
-        # define extended shape
-        ext_h = image.shape[0] + 2 * filters[0].shape[0]
-        ext_w = image.shape[1] + 2 * filters[0].shape[1]
-        ext_shape = (filters[0].n_channels, ext_h, ext_w)
-        # define response extended shape
-        r_ext_shape = (len(filters), image.shape[0], image.shape[1])
-
-        # extend image
-        ext_image = pad(image.pixels, ext_shape, mode=self.padding)
-        # compute extended image fft
-        fft_ext_image = fft2(ext_image)
-
-        # initialize response
-        response = np.zeros(r_ext_shape)
-        for j, f in enumerate(filters):
-
-            # extend filter
-            ext_f = pad(f.pixels, ext_shape, mode=self.padding)
-
-            # compute extended filter fft
-            fft_ext_f = fft2(ext_f)
-
-            # compute filter response
-            fft_ext_r = np.sum(fft_ext_f * fft_ext_image, axis=0)[None]
-            # compute inverse fft of the filter response
-            ext_r = fftshift(np.real(ifft2(fft_ext_r)), axes=(-2, -1))
-
-            # crop response to original image size
-            r = unpad(ext_r, image.shape)
-            # fill out overall response
-            response[j] = r
-
-        # transform response to Image and return it
-        return Image(response)
-
-    def learn_kernel(self, level=None, ext_shape=None):
-        kernel = self._learn_kernel(self.filters[:level], ext_shape=ext_shape)
-        return Image(fftshift(kernel, axes=(-2, -1)))
-
-    def _learn_kernel(self, filters, ext_shape=None):
-        _, ext_h, ext_w = ext_shape
-        if len(filters) > 1:
-            prev_kernel = self._learn_kernel(filters[1:], ext_shape=ext_shape)
-            kernel = 0
-            for j, f in enumerate(filters[0]):
-                if ext_shape:
-                    f_pixels = pad(f.pixels, ext_shape, mode=self.padding)
-                else:
-                    f_pixels = f.pixels
-                fft_f = fft2(f_pixels)
-                kernel += np.real(fft_f.conj() * prev_kernel[j][None] * fft_f)
-        else:
-            kernel = 0
-            for f in filters[0]:
-                if ext_shape:
-                    f_pixels = pad(f.pixels, ext_shape, mode=self.padding)
-                else:
-                    f_pixels = f.pixels
-                fft_f = fft2(f_pixels)
-                kernel += np.real(fft_f.conj() * fft_f)
-
-        return kernel
-
-    def compute_network_response(self, image, level=None):
-        for level_filters in self.filters[:level]:
-            image = self._apply_filters(image, level_filters)
-        return image
-
-    def compute_kernel_response(self, image, level=None):
-        # obtain number of channels
-        n_ch, h, w = self.filters[0][0].pixels.shape
-
-        # obtain extended shape
-        ext_h = image.shape[0] + 2 * h
-        ext_w = image.shape[1] + 2 * w
-        ext_shape = (n_ch, ext_h, ext_w)
-
-        # extend image
-        ext_image = pad(image.pixels, ext_shape, mode=self.padding)
-        # compute extended image fft
-        fft_ext_image = fft2(ext_image)
-
-        # compute deep convolutional kernel
-        fft_ext_kernel = self.learn_kernel(level=level, ext_shape=ext_shape)
-
-        # compute deep response by convolving image with sqrt of deep kernel
-        fft_ext_r = fftshift(
-            fft_ext_kernel.pixels**0.5, axes=(-2, -1)) * fft_ext_image
-
-        # compute inverse fft of deep response
-        ext_r = np.real(ifft2(fft_ext_r))
-
-        # crop deep response to original image size and return it
-        r = unpad(ext_r, image.shape)
-        return Image(r)
