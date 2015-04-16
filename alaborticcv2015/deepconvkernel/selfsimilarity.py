@@ -3,8 +3,7 @@ import warnings
 from menpo.feature import centralize
 from menpo.visualize import print_dynamic, progress_bar_str
 from alaborticcv2015.deepconvkernel.base import _parse_filters
-from alaborticcv2015.utils import normalize_images
-from .base import LearnableLDCN
+from .base import LearnableLDCN, _normalize_images
 
 
 def _parse_params(params, n_layers):
@@ -48,34 +47,38 @@ class SelfSimLDCN(LearnableLDCN):
     def _learn_network(self, image, extract_patches_func, verbose=False,
                        **kwargs):
         if verbose:
-            string = '- Learning network'
+            print_dynamic('- Learning network\n')
+        level_str = ''
         images = [image]
         filters = []
         for l in range(self._n_layers):
             if verbose:
-                string = '  - Level {}: '.format(l)
+                if self._n_layers > 1:
+                    level_str = '  - Layer {}: '.format(l)
+                else:
+                    level_str = '  - '
             # extract patches/filters
-            fs = extract_patches_func(images, string=string)
+            fs = extract_patches_func(images, string=level_str)
             if verbose:
-                string2 = string + 'Learning Filters '
+                string = level_str + 'Learning filters '
                 print_dynamic('{}{}'.format(
-                    string2, progress_bar_str(0, show_bar=True)))
+                    string, progress_bar_str(0, show_bar=True)))
             # flip filters
             fs = fs[..., ::-1, ::-1]
             # normalize filters
-            fs = normalize_images(fs, norm_func=self.norm_func)
+            fs = _normalize_images(fs, norm_func=self.norm_func)
             # save filters
             filters.append(fs)
             if verbose:
                 print_dynamic('{}{}'.format(
-                    string2, progress_bar_str(1, show_bar=True)))
+                    string, progress_bar_str(1, show_bar=True)))
             if l != self.n_layers:
                 # compute responses if not last layer
                 images = self.compute_filters_responses(
                     images, fs, norm_func=self.norm_func, mode=self.mode,
-                    boundary=self.boundary, verbose=verbose, string=string)
+                    boundary=self.boundary, verbose=verbose, string=level_str)
             if verbose:
-                print_dynamic('{}Done!\n'.format(string))
+                print_dynamic('{}Done!\n'.format(level_str))
         self._filters = filters
         self._n_filters = _parse_filters(filters)
 

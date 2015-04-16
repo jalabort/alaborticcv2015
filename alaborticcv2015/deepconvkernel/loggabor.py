@@ -4,8 +4,7 @@ from numpy.fft import ifft2, fftshift
 import warnings
 from menpo.math import log_gabor
 from menpo.feature import centralize
-from alaborticcv2015.utils import normalize_filters
-from .base import LinDeepConvNet
+from .base import LinDeepConvNet, _normalize_filters
 
 
 def _parse_params(params, n_layers):
@@ -83,4 +82,4 @@ class LogGaborLDCN(LinDeepConvNet):
             fs = np.tile(fs[:, None, ...], (1, n_ch, 1, 1))
             filters.append(fs)
 
-        self._filters = normalize_filters(filters, self.norm_func)
+        self._filters = _normalize_filters(filters, self.norm_func)
