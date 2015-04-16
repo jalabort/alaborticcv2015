@@ -1,5 +1,5 @@
 from __future__ import division
-from alabortcvpr2015.result import AlgorithmResult, FitterResult
+from alaborticcv2015.alignment.result import AlgorithmResult, FitterResult
 
 
 class AAMAlgorithmResult(AlgorithmResult):

@@ -87,6 +87,7 @@ class AAMBuilder(object):
         # build models at each scale
         if verbose:
             print_dynamic('- Building models\n')
+        level_str = ''
         shape_models = []
         appearance_models = []
         # for each pyramid level (high --> low)
