@@ -1,8 +1,6 @@
 from __future__ import division
 import numpy as np
-
 from menpo.shape import TriMesh
-
 from menpofit.aam.base import build_reference_frame
 
 
@@ -128,14 +126,14 @@ class GlobalAAM(AAM):
 class PartsAAM(AAM):
 
     def __init__(self, shape_models, appearance_models, reference_shape,
-                 parts_shape, features, normalize_parts, scales,
+                 parts_shape, features, norm_func, scales,
                  scale_shapes, scale_features):
 
         self.shape_models = shape_models
         self.appearance_models = appearance_models
         self.parts_shape = parts_shape
         self.features = features
-        self.normalize_parts = normalize_parts
+        self.norm_func = norm_func
         self.reference_shape = reference_shape
         self.scales = scales
         self.scale_shapes = scale_shapes

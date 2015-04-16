@@ -1,11 +1,8 @@
 from __future__ import division
 import abc
-
 import numpy as np
-
 from menpo.image import Image
 from menpo.feature import gradient as fast_gradient
-
 from .result import AAMAlgorithmResult
 
 
@@ -130,6 +127,7 @@ class PartsAAMInterface(AAMInterface):
     def __init__(self, aam_algorithm, sampling_mask=None):
         super(PartsAAMInterface, self). __init__(aam_algorithm)
 
+        self.norm_func = self.appearance_model.norm_func
         # grab algorithm shape model
         self.shape_model = self.transform.model
         # grab appearance model parts shape
@@ -151,9 +149,12 @@ class PartsAAMInterface(AAMInterface):
         return np.rollaxis(self.transform.d_dp(None), -1)
 
     def warp(self, image):
-        return Image(image.extract_patches(
-            self.transform.target, patch_size=self.parts_shape,
-            as_single_array=True))
+        parts = image.extract_patches(self.transform.target,
+                                      patch_size=self.parts_shape,
+                                      as_single_array=True)
+        if self.norm_func:
+            parts = self.norm_func(parts)
+        return Image(parts)
 
     def gradient(self, image):
         nabla = fast_gradient(image.pixels.reshape((-1,) + self.parts_shape))

@@ -1,13 +1,9 @@
 from __future__ import division
-
 from alabortcvpr2015.fitter import Fitter
 from alabortcvpr2015.pdm import OrthoPDM
 from alabortcvpr2015.transform import OrthoMDTransform
-
 from .algorithm import GlobalAAMInterface, PartsAAMInterface, AIC
 
-
-# Abstract Interface for AAM Fitters ------------------------------------------
 
 class AAMFitter(Fitter):
 
@@ -28,8 +24,6 @@ class AAMFitter(Fitter):
                                  'those'.format(self.dm.n_levels))
 
 
-# Concrete Implementations of AAM Fitters -------------------------------------
-
 class GlobalAAMFitter(AAMFitter):
 
     def __init__(self, global_aam, algorithm_cls=AIC,
@@ -38,7 +32,7 @@ class GlobalAAMFitter(AAMFitter):
         super(GlobalAAMFitter, self).__init__()
 
         self.dm = global_aam
-        self._algorithms = []
+        self.algorithms = []
         self._check_n_shape(n_shape)
         self._check_n_appearance(n_appearance)
 
@@ -53,18 +47,15 @@ class GlobalAAMFitter(AAMFitter):
             algorithm = algorithm_cls(GlobalAAMInterface, am,
                                       md_transform, **kwargs)
 
-            self._algorithms.append(algorithm)
+            self.algorithms.append(algorithm)
 
 
 class PartsAAMFitter(AAMFitter):
 
     def __init__(self, parts_aam, algorithm_cls=AIC,
                  n_shape=None, n_appearance=None, **kwargs):
-
-        super(PartsAAMFitter, self).__init__()
-
         self.dm = parts_aam
-        self._algorithms = []
+        self.algorithms = []
         self._check_n_shape(n_shape)
         self._check_n_appearance(n_appearance)
 
@@ -74,7 +65,7 @@ class PartsAAMFitter(AAMFitter):
             pdm = OrthoPDM(sm, sigma2=am.noise_variance())
 
             am.parts_shape = self.dm.parts_shape
-            am.normalize_parts = self.dm.normalize_parts
+            am.norm_func = self.dm.norm_func
             algorithm = algorithm_cls(PartsAAMInterface, am, pdm, **kwargs)
 
-            self._algorithms.append(algorithm)
+            self.algorithms.append(algorithm)
