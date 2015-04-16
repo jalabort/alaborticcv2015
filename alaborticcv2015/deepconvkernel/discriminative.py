@@ -72,15 +72,16 @@ class DiscriminativeLDCN(LearnableLDCN):
     Discriminative Linear Deep Convolutional Network Class
     """
     def __init__(self, learn_filters=learn_mccf_filters, n_layers=3,
-                 architecture=3, norm_func=centralize, patch_shape=(31, 31),
+                 architecture=3, normalize_patches=centralize,
+                 normalize_filters=None, patch_shape=(31, 31),
                  mode='same', boundary='constant'):
         super(DiscriminativeLDCN, self).__init__(architecture=architecture,
-                                                 norm_func=norm_func,
                                                  patch_shape=patch_shape,
                                                  mode=mode, boundary=boundary)
         self._learn_filters = learn_filters
         self._n_layers = n_layers
-        print learn_filters
+        self.normalize_patches = normalize_patches
+        self.normalize_filters = normalize_filters
         if learn_filters is learn_mccf_filters:
             self.context_shape = self.patch_shape * 3
 
@@ -113,7 +114,9 @@ class DiscriminativeLDCN(LearnableLDCN):
                 print_dynamic('{}{}'.format(
                     string, progress_bar_str(0, show_bar=True)))
             # normalize patches
-            patches = _normalize_images(patches, norm_func=self.norm_func)
+            if self.normalize_patches:
+                patches = _normalize_images(patches,
+                                            norm_func=self.normalize_patches)
             # learn level filters
             fs = self._learn_filters(patches, patch_shape=self.patch_shape,
                                      verbose=verbose, string=level_str,
@@ -121,7 +124,8 @@ class DiscriminativeLDCN(LearnableLDCN):
             # delete patches
             del patches
             # normalize filters
-            fs = _normalize_images(fs, norm_func=self.norm_func)
+            if self.normalize_filters:
+                fs = _normalize_images(fs, norm_func=self.normalize_filters)
             # save filters
             filters.append(fs)
             if verbose:
@@ -130,8 +134,9 @@ class DiscriminativeLDCN(LearnableLDCN):
             if l < self._n_layers-1:
                 # if not last layer, compute responses
                 images = self.compute_filters_responses(
-                    images, fs, norm_func=self.norm_func, mode=self.mode,
-                    boundary=self.boundary, verbose=verbose, string=level_str)
+                    images, fs, norm_func=self.normalize_filters,
+                    mode=self.mode, boundary=self.boundary, verbose=verbose,
+                    string=level_str)
             if verbose:
                 print_dynamic('{}Done!\n'.format(level_str))
         self._filters = filters

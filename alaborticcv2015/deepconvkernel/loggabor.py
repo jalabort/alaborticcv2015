@@ -38,9 +38,8 @@ class LogGaborLDCN(LinDeepConvNet):
     Log-Gabor Linear Deep Convolutional Network Class
     """
     def __init__(self, params=None, n_layers=3, architecture=3,
-                 norm_func=centralize, patch_shape=(7, 7)):
-        super(LogGaborLDCN, self).__init__(architecture=architecture,
-                                           norm_func=norm_func)
+                 normalize_filters=None, patch_shape=(7, 7)):
+        super(LogGaborLDCN, self).__init__(architecture=architecture)
         if architecture == 1 or architecture == 2:
             self.build_network = self._build_network12
         elif architecture == 3:
@@ -49,6 +48,7 @@ class LogGaborLDCN(LinDeepConvNet):
             raise ValueError('architecture={} must be an integer between 1 '
                              'and 3.').format(architecture)
         self.params, self._n_filters = _parse_params(params, n_layers)
+        self.normalize_filters = normalize_filters
         self.patch_shape = patch_shape
 
     def _build_network12(self, n_channels=3):
@@ -65,7 +65,7 @@ class LogGaborLDCN(LinDeepConvNet):
             fs = np.tile(fs[:, None, ...], (1, n_channels, 1, 1))
             filters.append(fs)
 
-        self._filters = normalize_filters(filters, self.norm_func)
+        self._filters = _normalize_filters(filters, self.normalize_filters)
 
     def _build_network3(self, n_channels=3):
         filters = []
@@ -82,4 +82,4 @@ class LogGaborLDCN(LinDeepConvNet):
             fs = np.tile(fs[:, None, ...], (1, n_ch, 1, 1))
             filters.append(fs)
 
-        self._filters = _normalize_filters(filters, self.norm_func)
+        self._filters = _normalize_filters(filters, self.normalize_filters)

@@ -98,7 +98,6 @@ def _extract_patches(images, extract=_extract_patches_from_grid,
             if verbose:
                 print_dynamic('{}{}'.format(
                     level_str, progress_bar_str(j/n_images, show_bar=True)))
-
             ps = extract(i, patch_shape=patch_shape, dtype=dtype,
                          as_single_array=as_single_array, **kwargs)
             if flatten:
@@ -114,7 +113,6 @@ def _extract_patches(images, extract=_extract_patches_from_grid,
             if verbose:
                 print_dynamic('{}{}'.format(
                     level_str, progress_bar_str(j/n_images, show_bar=True)))
-
             ps = extract(i, patch_shape=patch_shape, dtype=dtype,
                          as_single_array=as_single_array, **kwargs)
             patches[j+1] = ps
@@ -217,7 +215,7 @@ def _compute_filters_responses3(images, filters, norm_func=centralize,
     return responses
 
 
-def _network_response1(x, filters, norm_func=centralize, hidden_mode='same',
+def _network_response1(x, filters, norm_func=None, hidden_mode='same',
                        visible_mode='valid', boundary='symmetric'):
     limit = len(filters) - 1
     xs = [x]
@@ -238,7 +236,7 @@ def _network_response1(x, filters, norm_func=centralize, hidden_mode='same',
         return np.asarray(xs).reshape((-1, x.shape[-2:]))
 
 
-def _network_response2(x, filters, norm_func=centralize, hidden_mode='same',
+def _network_response2(x, filters, norm_func=None, hidden_mode='same',
                        visible_mode='valid', boundary='symmetric'):
     limit = len(filters) - 1
     for j, fs in enumerate(filters):
@@ -253,7 +251,7 @@ def _network_response2(x, filters, norm_func=centralize, hidden_mode='same',
     return x
 
 
-def _network_response3(x, filters, norm_func=centralize, hidden_mode='same',
+def _network_response3(x, filters, norm_func=None, hidden_mode='same',
                        visible_mode='valid', boundary='symmetric'):
     limit = len(filters) - 1
     for j, fs in enumerate(filters):
@@ -322,7 +320,7 @@ def _compute_kernel3(filters, ext_shape=None):
 
 @ndfeature
 def _kernel_response(x, compute_kernel, filters_shape, layer=None,
-                     norm_func=centralize, mode='valid',
+                     norm_func=None, mode='valid',
                      boundary='symmetric'):
     if norm_func:
         x = norm_func(x)
@@ -361,7 +359,7 @@ class LinDeepConvNet(object):
     r"""
     Linear Deep Convolutional Network Interface
     """
-    def __init__(self, architecture=3, norm_func=centralize):
+    def __init__(self, architecture=3):
         if architecture == 1:
             self._network_response = _network_response1
             self.__compute_kernel = _compute_kernel1
@@ -374,7 +372,6 @@ class LinDeepConvNet(object):
         else:
             raise ValueError('architecture={} must be an integer between 1 '
                              'and 3.').format(architecture)
-        self.norm_func = norm_func
 
     @property
     def n_layers(self):
@@ -443,7 +440,7 @@ class LinDeepConvNet(object):
                          visible_mode='valid', boundary='symmetric'):
         layer = _check_layer(layer, self.n_layers)
         return self._network_response(image, self._filters[:layer+1],
-                                      norm_func=self.norm_func,
+                                      norm_func=self.normalize_filters,
                                       hidden_mode=hidden_mode,
                                       visible_mode=visible_mode,
                                       boundary=boundary)
@@ -451,7 +448,7 @@ class LinDeepConvNet(object):
     def kernel_response(self, x, layer=None, mode='valid',
                         boundary='symmetric'):
         return _kernel_response(x, self._compute_kernel, self.filters_shape,
-                                layer=layer, norm_func=self.norm_func,
+                                layer=layer, norm_func=self.normalize_filters,
                                 mode=mode, boundary=boundary)
 
 
@@ -459,10 +456,9 @@ class LearnableLDCN(LinDeepConvNet):
     r"""
     Learnable Linear Deep Convolutional Network Interface
     """
-    def __init__(self, architecture=3, norm_func=centralize,
-                 patch_shape=(7, 7), mode='same', boundary='constant'):
-        super(LearnableLDCN, self).__init__(architecture=architecture,
-                                            norm_func=norm_func)
+    def __init__(self, architecture=3, patch_shape=(7, 7), mode='same',
+                 boundary='constant'):
+        super(LearnableLDCN, self).__init__(architecture=architecture)
         if architecture == 1:
             self.compute_filters_responses = _compute_filters_responses1
         elif architecture == 2:

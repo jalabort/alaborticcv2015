@@ -2,7 +2,7 @@ from __future__ import division
 import numpy as np
 import warnings
 from menpo.math import pca, ica, nmf
-from menpo.math.decomposition.ica import _batch_ica, negentropy_exp
+from menpo.math.decomposition.ica import _batch_ica, negentropy_logcosh
 from menpo.feature import centralize
 from menpo.visualize import print_dynamic, progress_bar_str
 from .base import LearnableLDCN, _normalize_images
@@ -22,7 +22,8 @@ def learn_pca_filters(patches, n_filters=8):
 
 
 def learn_ica_filters(patches, n_filters=8, algorithm=_batch_ica,
-                      negentropy=negentropy_exp, max_iters=500, verbose=False):
+                      negentropy=negentropy_logcosh, max_iters=500,
+                      verbose=False):
     r"""
     Learn ICA convolution filters
     """
@@ -120,14 +121,16 @@ class GenerativeLDCN(LearnableLDCN):
     Generative Linear Deep Convolutional Network Class
     """
     def __init__(self, learn_filters=learn_pca_filters, n_filters=8,
-                 n_layers=3, architecture=3, norm_func=centralize,
-                 patch_shape=(7, 7), mode='same', boundary='constant'):
+                 n_layers=3, architecture=3, normalize_patches=centralize,
+                 normalize_filters=None, patch_shape=(7, 7), mode='same',
+                 boundary='constant'):
         super(GenerativeLDCN, self).__init__(architecture=architecture,
-                                             norm_func=norm_func,
                                              patch_shape=patch_shape,
                                              mode=mode, boundary=boundary)
         self._learn_filters, self._n_filters = _parse_params(
             learn_filters, n_filters, n_layers)
+        self.normalize_patches = normalize_patches
+        self.normalize_filters = normalize_filters
 
     def _learn_network(self, images, extract_patches_func, verbose=False,
                        **kwargs):
@@ -154,7 +157,9 @@ class GenerativeLDCN(LearnableLDCN):
                 print_dynamic('{}{}'.format(
                     string, progress_bar_str(0, show_bar=True)))
             # normalize patches
-            patches = _normalize_images(patches, norm_func=self.norm_func)
+            if self.normalize_patches:
+                patches = _normalize_images(patches,
+                                            norm_func=self.normalize_patches)
             # learn level filters
             fs = np.empty((self.n_filters_layer[l], n_ch) + self.patch_shape)
             start = 0
@@ -164,7 +169,8 @@ class GenerativeLDCN(LearnableLDCN):
             # delete patches
             del patches
             # normalize filters
-            fs = _normalize_images(fs, norm_func=self.norm_func)
+            if self.normalize_filters:
+                fs = _normalize_images(fs, norm_func=self.normalize_filters)
             # save filters
             filters.append(fs)
             if verbose:
@@ -173,8 +179,9 @@ class GenerativeLDCN(LearnableLDCN):
             if l < self.n_layers-1:
                 # if not last layer, compute responses
                 images = self.compute_filters_responses(
-                    images, fs, norm_func=self.norm_func, mode=self.mode,
-                    boundary=self.boundary, verbose=verbose, string=level_str)
+                    images, fs, norm_func=self.normalize_filters,
+                    mode=self.mode, boundary=self.boundary, verbose=verbose,
+                    string=level_str)
                 n_ch = images[0].n_channels
             if verbose:
                 print_dynamic('{}Done!\n'.format(level_str))

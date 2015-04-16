@@ -36,13 +36,15 @@ class SelfSimLDCN(LearnableLDCN):
     r"""
     Self-Similarity Linear Deep Convolutional Network Class
     """
-    def __init__(self, n_layers=3, architecture=3, norm_func=centralize,
+    def __init__(self, n_layers=3, architecture=3,
+                 normalize_patches=centralize, normalize_filters=None,
                  patch_shape=(7, 7),  mode='same', boundary='constant'):
         super(SelfSimLDCN, self).__init__(architecture=architecture,
-                                          norm_func=norm_func,
                                           patch_shape=patch_shape,
                                           mode=mode, boundary=boundary)
         self._n_layers = n_layers
+        self.normalize_patches = normalize_patches
+        self.normalize_filters = normalize_filters
 
     def _learn_network(self, image, extract_patches_func, verbose=False,
                        **kwargs):
@@ -66,7 +68,8 @@ class SelfSimLDCN(LearnableLDCN):
             # flip filters
             fs = fs[..., ::-1, ::-1]
             # normalize filters
-            fs = _normalize_images(fs, norm_func=self.norm_func)
+            if self.normalize_patches:
+                fs = _normalize_images(fs, norm_func=self.normalize_patches)
             # save filters
             filters.append(fs)
             if verbose:
@@ -75,7 +78,7 @@ class SelfSimLDCN(LearnableLDCN):
             if l != self.n_layers:
                 # compute responses if not last layer
                 images = self.compute_filters_responses(
-                    images, fs, norm_func=self.norm_func, mode=self.mode,
+                    images, fs, norm_func=self.normalize_filters, mode=self.mode,
                     boundary=self.boundary, verbose=verbose, string=level_str)
             if verbose:
                 print_dynamic('{}Done!\n'.format(level_str))
