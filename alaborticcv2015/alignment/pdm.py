@@ -1,11 +1,8 @@
 import numpy as np
-
 from menpofit.transform import DifferentiableAlignmentSimilarity
 from menpofit.differentiable import DP
 from menpofit.modelinstance import ModelInstance, similarity_2d_instance_model
 
-
-# Point Distribution Models ---------------------------------------------------
 
 class PDM(ModelInstance, DP):
     r"""Specialization of :map:`ModelInstance` for use with spatial data.

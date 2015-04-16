@@ -1,80 +1,10 @@
 from __future__ import division
-
 import numpy as np
-
 from menpo.transform import Scale, AlignmentAffine
-
-from menpofit.base import noisy_align
-from menpofit.fitter import align_shape_with_bb
-
 from .result import FitterResult
 
 
-# Abstract Interface for Fitters ------------------------------------------
-
 class Fitter(object):
-
-    @property
-    def reference_shape(self):
-        r"""
-        The reference shape of the AAM.
-
-        :type: :map:`PointCloud`
-        """
-        return self.dm.reference_shape
-
-    @property
-    def features(self):
-        r"""
-        The feature extracted at each pyramidal level during AAM building.
-        Stored in ascending pyramidal order.
-
-        :type: `list`
-        """
-        return self.dm.features
-
-    @property
-    def n_levels(self):
-        r"""
-        The number of pyramidal levels used during AAM building.
-
-        :type: `int`
-        """
-        return self.dm.n_levels
-
-    @property
-    def scales(self):
-        return self.dm.scales
-
-    @property
-    def scale_features(self):
-        r"""
-        Flag that defined the nature of Gaussian pyramid used to build the
-        AAM.
-        If ``True``, the feature space is computed once at the highest scale
-        and the Gaussian pyramid is applied to the feature images.
-        If ``False``, the Gaussian pyramid is applied to the original images
-        and features are extracted at each level.
-
-        :type: `boolean`
-        """
-        return self.dm.scale_features
-
-    def _check_n_shape(self, n_shape):
-        if n_shape is not None:
-            if type(n_shape) is int or type(n_shape) is float:
-                for sm in self.dm.shape_models:
-                    sm.n_active_components = n_shape
-            elif len(n_shape) == 1 and self.dm.n_levels > 1:
-                for sm in self.dm.shape_models:
-                    sm.n_active_components = n_shape[0]
-            elif len(n_shape) == self.dm.n_levels:
-                for sm, n in zip(self.dm.shape_models, n_shape):
-                    sm.n_active_components = n
-            else:
-                raise ValueError('n_shape can be an integer or a float or None'
-                                 'or a list containing 1 or {} of '
-                                 'those'.format(self.dm.n_levels))
 
     def fit(self, image, initial_shape, max_iters=50, gt_shape=None,
             **kwargs):
@@ -134,56 +64,6 @@ class Fitter(object):
             gt_shape=gt_shape)
 
         return fitter_result
-
-    def perturb_shape(self, gt_shape, noise_std=0.04, rotation=False):
-        r"""
-        Generates an initial shape by adding gaussian noise to the perfect
-        similarity alignment between the ground truth and reference_shape.
-
-        Parameters
-        -----------
-        gt_shape: :class:`menpo.shape.PointCloud`
-            The ground truth shape.
-        noise_std: float, optional
-            The standard deviation of the gaussian noise used to produce the
-            initial shape.
-
-            Default: 0.04
-        rotation: boolean, optional
-            Specifies whether ground truth in-plane rotation is to be used
-            to produce the initial shape.
-
-            Default: False
-
-        Returns
-        -------
-        initial_shape: :class:`menpo.shape.PointCloud`
-            The initial shape.
-        """
-        reference_shape = self.reference_shape
-        return noisy_align(reference_shape, gt_shape, noise_std=noise_std,
-                           rotation=rotation).apply(reference_shape)
-
-    def obtain_shape_from_bb(self, bounding_box):
-        r"""
-        Generates an initial shape given a bounding box detection.
-
-        Parameters
-        -----------
-        bounding_box: (2, 2) ndarray
-            The bounding box specified as:
-
-                np.array([[x_min, y_min], [x_max, y_max]])
-
-        Returns
-        -------
-        initial_shape: :class:`menpo.shape.PointCloud`
-            The initial shape.
-        """
-
-        reference_shape = self.reference_shape
-        return align_shape_with_bb(reference_shape,
-                                   bounding_box).apply(reference_shape)
 
     def _prepare_image(self, image, initial_shape, gt_shape=None):
         r"""
@@ -289,13 +169,11 @@ class Fitter(object):
             The fitting object containing the state of the whole fitting
             procedure.
         """
-
         max_iters = self._prepare_max_iters(max_iters)
-
         shape = initial_shape
         gt_shape = None
         algorithm_results = []
-        for j, (i, alg, it, s) in enumerate(zip(images, self._algorithms,
+        for j, (i, alg, it, s) in enumerate(zip(images, self.algorithms,
                                                 max_iters, self.scales)):
             if gt_shapes:
                 gt_shape = gt_shapes[j]
@@ -312,9 +190,7 @@ class Fitter(object):
         return algorithm_results
 
     def _prepare_max_iters(self, max_iters):
-
         n_levels = self.n_levels
-
         # check max_iters parameter
         if type(max_iters) is int:
             max_iters = [np.round(max_iters/n_levels)

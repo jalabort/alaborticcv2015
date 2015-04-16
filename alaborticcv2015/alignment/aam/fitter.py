@@ -146,6 +146,7 @@ class GlobalAAMFitter(AAMFitter):
         self._check_n_shape(n_shape)
         self._check_n_appearance(n_appearance)
 
+        self.algorithms = []
         for j, (am, sm) in enumerate(zip(self.dm.appearance_models,
                                          self.dm.shape_models)):
 
@@ -168,6 +169,7 @@ class PartsAAMFitter(AAMFitter):
         self._check_n_shape(n_shape)
         self._check_n_appearance(n_appearance)
 
+        self.algorithms = []
         for j, (am, sm) in enumerate(zip(self.dm.appearance_models,
                                          self.dm.shape_models)):
 
