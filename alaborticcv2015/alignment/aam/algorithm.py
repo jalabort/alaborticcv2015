@@ -319,7 +319,7 @@ class PIC(ProjectOut):
         J_m = self.interface.steepest_descent_images(-nabla_a, self.dW_dp)
         # project out appearance model from it
         self.QJ_m = self.project_out(J_m)
-        # compute masked inverse Hessian
+        # compute masked Hessian
         self.JQJ_m = self.QJ_m.T.dot(J_m)
         # compute masked Jacobian pseudo-inverse
         self.pinv_QJ_m = np.linalg.solve(self.JQJ_m, self.QJ_m.T)
