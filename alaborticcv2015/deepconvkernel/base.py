@@ -41,6 +41,19 @@ def _check_layer(layer, n_layers):
     return layer
 
 
+def _kernel_type(kernel, type='abs'):
+    if type is 'abs':
+        return np.abs(kernel)
+    elif type is 'angle':
+        return np.angle(kernel)
+    elif type is 'real':
+        return np.real(kernel)
+    elif type is 'imag':
+        return np.imag(kernel)
+    else:
+        return kernel
+
+
 def _normalize_images(images, norm_func=centralize):
     if norm_func is not None:
         for j, i in enumerate(images):
@@ -57,7 +70,7 @@ def _normalize_filters(filters, norm_func=centralize):
 
 def _extract_patches_from_landmarks(image, patch_shape=(7, 7), group=None,
                                     label=None, as_single_array=False,
-                                    dtype=np.float32):
+                                    dtype=None):
     image_cp = image.copy()
     image_cp.pixels_astype(dtype=np.float64)
     patches = image_cp.extract_patches_around_landmarks(
@@ -70,7 +83,7 @@ def _extract_patches_from_landmarks(image, patch_shape=(7, 7), group=None,
 
 
 def _extract_patches_from_grid(image, patch_shape=(7, 7), stride=(4, 4),
-                               as_single_array=False, dtype=np.float32):
+                               as_single_array=False, dtype=None):
     limit = np.round(np.asarray(patch_shape) / 2)
     image_cp = image.copy()
     image_cp.pixels_astype(dtype=np.float64)
@@ -273,7 +286,7 @@ def _compute_kernel1(filters, ext_shape=None):
             fs = pad(fs, ext_shape)
         fft_fs = fft2(fs)
         kernel *= np.sum(fft_fs.conj() * fft_fs, axis=(0, 1))
-    return np.real(kernel)
+    return kernel
 
 
 def _compute_kernel2(filters, ext_shape=None):
@@ -292,7 +305,7 @@ def _compute_kernel2(filters, ext_shape=None):
             fs = pad(fs, ext_shape=ext_shape)
         fft_fs = fft2(fs)
         kernel = np.sum(fft_fs.conj(), axis=0) * np.sum(fft_fs, axis=0)
-    return np.real(kernel)
+    return kernel
 
 
 def __compute_kernel3(filters, ext_shape=None):
@@ -315,7 +328,7 @@ def __compute_kernel3(filters, ext_shape=None):
 
 def _compute_kernel3(filters, ext_shape=None):
     aux1, aux2 = __compute_kernel3(filters, ext_shape=ext_shape)
-    return np.real(np.sum(aux1 * aux2, axis=0))
+    return np.sum(aux1 * aux2, axis=0)
 
 
 @ndfeature
@@ -341,7 +354,7 @@ def _kernel_response(x, compute_kernel, filters_shape, layer=None,
     fft_ext_c = fft_ext_kernel**0.5 * fft_ext_image
 
     # compute ifft of extended response
-    ext_c = np.real(ifft2(fft_ext_c))
+    ext_c = ifft2(fft_ext_c)
 
     if mode is 'full':
         return ext_c
@@ -395,40 +408,45 @@ class LinDeepConvNet(object):
     def filters_shape(self):
         return self._filters[0].shape[-2:]
 
-    def filters_spatial(self):
+    def filters_spatial(self, type='abs'):
         filters = []
         for fs in self._filters:
             level_filters = []
             for f in fs:
-                level_filters.append(Image(f))
+                typed_f = _kernel_type(f, type=type)
+                level_filters.append(Image(typed_f))
             filters.append(level_filters)
         return filters
 
-    def filters_frequency(self, ext_shape=None):
+    def filters_frequency(self, ext_shape=None, type='abs'):
         filters = []
         for fs in self._filters:
             level_filters = []
             for f in fs:
                 if ext_shape is not None:
                     f = pad(f, ext_shape=ext_shape)
-                level_filters.append(Image(np.abs(fftshift(fft2(f),
-                                                           axes=(-2, -1)))))
+                f = fftshift(fft2(f), axes=(-2, -1))
+                typed_f = _kernel_type(f, type=type)
+                level_filters.append(Image(np.abs(typed_f)))
             filters.append(level_filters)
         return filters
 
-    def kernels_spatial(self, ext_shape=None):
+    def kernels_spatial(self, ext_shape=None, type='abs'):
         kernels = []
         for layer in range(self.n_layers):
             fft_kernel = self._compute_kernel(layer=layer, ext_shape=ext_shape)
-            kernels.append(Image(np.real(fftshift(ifft2(fft_kernel),
-                                         axes=(-2, -1)))))
+            kernel = fftshift(ifft2(fft_kernel), axes=(-2, -1))
+            typed_kernel = _kernel_type(kernel, type=type)
+            kernels.append(Image(typed_kernel))
         return kernels
 
-    def kernels_frequency(self, ext_shape=None):
+    def kernels_frequency(self, ext_shape=None, type='abs'):
         kernels = []
         for layer in range(self.n_layers):
             fft_kernel = self._compute_kernel(layer=layer, ext_shape=ext_shape)
-            kernels.append(Image(fftshift(fft_kernel, axes=(-2, -1))))
+            fft_kernel = fftshift(fft_kernel, axes=(-2, -1))
+            typed_kernel = _kernel_type(fft_kernel, type=type)
+            kernels.append(Image(typed_kernel))
         return kernels
 
     def _compute_kernel(self, layer=None, ext_shape=None):

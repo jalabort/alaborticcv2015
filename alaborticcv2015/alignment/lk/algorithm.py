@@ -124,7 +124,7 @@ class IC(LKAlgorithm):
     r"""
     Inverse Compositional Lucas-Kanade algorithm
     """
-    def __init__(self, template, transform, residual, eps=10**-10):
+    def __init__(self, template, transform, residual, eps=-1):
         super(IC, self).__init__(template, transform, residual, eps=eps)
         self.precompute()
 

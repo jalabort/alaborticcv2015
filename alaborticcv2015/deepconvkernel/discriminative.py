@@ -64,7 +64,7 @@ def learn_lda_filters(patches, n_filters=None, verbose=False, level_str='',
     # learn lda filters
     lda_filters = lda(patches, class_offsets, n_components=n_filters,
                       inplace=True)[0]
-    return lda_filters.reshape((-1,) + patch_shape)
+    return lda_filters.reshape((-1,) + patch_shape)[..., ::-1, ::-1]
 
 
 class DiscriminativeLDCN(LearnableLDCN):
@@ -119,7 +119,7 @@ class DiscriminativeLDCN(LearnableLDCN):
                                             norm_func=self.normalize_patches)
             # learn level filters
             fs = self._learn_filters(patches, patch_shape=self.patch_shape,
-                                     verbose=verbose, string=level_str,
+                                     verbose=verbose, level_str=level_str,
                                      **kwargs)
             # delete patches
             del patches
