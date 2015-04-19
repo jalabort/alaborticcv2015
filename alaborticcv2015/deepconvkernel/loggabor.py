@@ -53,7 +53,7 @@ class LogGaborLDCN(LinDeepConvNet):
 
     def _build_network12(self, n_channels=3):
         filters = []
-        for gp in zip(self.params):
+        for gp in self.params:
             fs = log_gabor(np.empty(self.patch_shape),
                            num_scales=gp['num_scales'],
                            num_orientations=gp['num_orientations'],
@@ -61,7 +61,7 @@ class LogGaborLDCN(LinDeepConvNet):
                            scaling_constant=gp['scaling_constant'],
                            center_sigma=gp['center_sigma'],
                            d_phi_sigma=gp['d_phi_sigma'])[3]
-            fs = np.real(fftshift(ifft2(fs), axes=(-2, -1)))
+            fs = fftshift(ifft2(fs), axes=(-2, -1))
             fs = np.tile(fs[:, None, ...], (1, n_channels, 1, 1))
             filters.append(fs)
 
@@ -78,8 +78,13 @@ class LogGaborLDCN(LinDeepConvNet):
                            scaling_constant=gp['scaling_constant'],
                            center_sigma=gp['center_sigma'],
                            d_phi_sigma=gp['d_phi_sigma'])[3]
-            fs = np.real(fftshift(ifft2(fs), axes=(-2, -1)))
+            fs = fftshift(ifft2(fs), axes=(-2, -1))
             fs = np.tile(fs[:, None, ...], (1, n_ch, 1, 1))
             filters.append(fs)
 
         self._filters = _normalize_filters(filters, self.normalize_filters)
+
+    def _compute_kernel(self, layer=None, ext_shape=None):
+        kernel = super(LogGaborLDCN, self)._compute_kernel(layer=layer,
+                                                           ext_shape=ext_shape)
+        return np.flipud(kernel)

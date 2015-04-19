@@ -341,7 +341,7 @@ def _kernel_response(x, compute_kernel, filters_shape, layer=None,
     fft_ext_c = fft_ext_kernel**0.5 * fft_ext_image
 
     # compute ifft of extended response
-    ext_c = np.real(ifft2(fft_ext_c))
+    ext_c = ifft2(fft_ext_c)
 
     if mode is 'full':
         return ext_c

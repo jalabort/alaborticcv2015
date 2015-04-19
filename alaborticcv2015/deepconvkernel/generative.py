@@ -47,7 +47,7 @@ def learn_nmf_filters(patches, n_filters=8, max_iters=500, verbose=False,
     patches = patches.reshape((n_patches, -1))
     # learn nmf filters
     nmf_filters = nmf(patches, n_components=n_filters, max_iters=max_iters,
-                      verbose=verbose, **kwargs)
+                      verbose=verbose, **kwargs)[0]
     return nmf_filters.reshape((-1,) + patch_shape)
 
 

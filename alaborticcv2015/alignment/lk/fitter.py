@@ -18,7 +18,7 @@ class LKFitter(Fitter):
 
     def __init__(self, template, group=None, label=None, features=no_op,
                  transform_cls=DifferentiableAlignmentAffine, diagonal=None,
-                 scales=(1, .5), scale_features=True, algorithm_cls=IC,
+                 scales=(1,), scale_features=True, algorithm_cls=IC,
                  residual_cls=FilteredSSD, **kwargs):
         self.features = features
         self.transform_cls = transform_cls
@@ -35,9 +35,11 @@ class LKFitter(Fitter):
         self.algorithms = []
         for j, (t, s) in enumerate(zip(self.templates, self.sources)):
             transform = self.transform_cls(s, s)
-            if residual_cls is FilteredSSD or residual_cls is FilteredFourierSSD:
-                if 'kernel' in kwargs:
-                    kernel = kwargs['kernel'][j]
+            if (residual_cls is FilteredSSD or
+                residual_cls is FilteredFourierSSD):
+                if 'kernel_func' in kwargs:
+                    kernel_func = kwargs['kernel_func']
+                    kernel = kernel_func(t.shape)
                     residual = residual_cls(kernel=kernel)
                 else:
                     residual = residual_cls(**kwargs)
