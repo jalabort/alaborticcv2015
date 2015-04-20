@@ -151,7 +151,7 @@ def _image_to_images(image):
 
 
 def _compute_filters_responses1(images, filters, norm_func=centralize,
-                                mode='same', boundary='symmetric',
+                                mode='sa', boundary='symmetric',
                                 verbose=False, string=''):
     if verbose:
         string += 'Computing Filter Responses '
@@ -330,12 +330,12 @@ def _kernel_response(x, compute_kernel, filters_shape, layer=None,
     ext_shape = x_shape + f_shape - 1
 
     # extend image
-    ext_x = pad(x, ext_shape, boundary=boundary)
+    ext_x = x# #pad(x, ext_shape, boundary=boundary)
     # compute extended image fft
     fft_ext_image = fft2(ext_x)
 
     # compute deep convolution kernel
-    fft_ext_kernel = compute_kernel(layer=layer, ext_shape=ext_shape)
+    fft_ext_kernel = compute_kernel(layer=layer, ext_shape=x_shape)
 
     # compute kernel extended response in Fourier domain
     fft_ext_c = fft_ext_kernel**0.5 * fft_ext_image
@@ -343,6 +343,7 @@ def _kernel_response(x, compute_kernel, filters_shape, layer=None,
     # compute ifft of extended response
     ext_c = np.real(ifft2(fft_ext_c))
 
+    mode = 'full'
     if mode is 'full':
         return ext_c
     elif mode is 'same':
@@ -437,7 +438,7 @@ class LinDeepConvNet(object):
                                      ext_shape=ext_shape)
 
     def network_response(self, image, layer=None, hidden_mode='same',
-                         visible_mode='valid', boundary='symmetric'):
+                         visible_mode='full', boundary='symmetric'):
         layer = _check_layer(layer, self.n_layers)
         return self._network_response(image, self._filters[:layer+1],
                                       norm_func=self.normalize_filters,
@@ -445,7 +446,7 @@ class LinDeepConvNet(object):
                                       visible_mode=visible_mode,
                                       boundary=boundary)
 
-    def kernel_response(self, x, layer=None, mode='valid',
+    def kernel_response(self, x, layer=None, mode='full',
                         boundary='symmetric'):
         return _kernel_response(x, self._compute_kernel, self.filters_shape,
                                 layer=layer, norm_func=self.normalize_filters,

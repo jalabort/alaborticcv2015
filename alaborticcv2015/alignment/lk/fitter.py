@@ -35,15 +35,15 @@ class LKFitter(Fitter):
         self.algorithms = []
         for j, (t, s) in enumerate(zip(self.templates, self.sources)):
             transform = self.transform_cls(s, s)
-            if residual_cls is FilteredSSD or residual_cls is FilteredFourierSSD:
-                if 'kernel' in kwargs:
-                    kernel = kwargs['kernel'][j]
-                    residual = residual_cls(kernel=kernel)
-                else:
-                    residual = residual_cls(**kwargs)
+            if ('kernel_func' in kwargs and
+                (residual_cls is FilteredSSD or
+                 residual_cls is FilteredFourierSSD)):
+                kernel_func = kwargs.pop('kernel_func')
+                kernel = kernel_func(t.shape)
+                residual = residual_cls(kernel=kernel)
             else:
-                residual = residual_cls(**kwargs)
-            algorithm = algorithm_cls(t, transform, residual)
+                residual = residual_cls()
+            algorithm = algorithm_cls(t, transform, residual, **kwargs)
             self.algorithms.append(algorithm)
 
     @property

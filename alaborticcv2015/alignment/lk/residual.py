@@ -1,6 +1,6 @@
 import abc
 import numpy as np
-from numpy.fft import fftn, ifftn
+from numpy.fft import fftn, ifftn, fft2
 import scipy.linalg
 from menpo.feature import gradient
 
@@ -244,7 +244,7 @@ class FilteredFourierSSD(Residual):
 
         # compute error image fft
         # fft_error_img:  ch x (h x w)
-        fft_error_img = fftn(error_img)
+        fft_error_img = fft2(error_img)
 
         # compute steepest descent update
         # fft_sdi:        params x (ch x h x w)

@@ -395,6 +395,10 @@ class Result(object):
             grid_line_style=grid_line_style, grid_line_width=grid_line_width,
             figure_size=figure_size)
 
+    def as_serializableresult(self):
+        return SerializableResult(self.image, self.shapes(), self.n_iters,
+                                  gt_shape=self.gt_shape)
+
     def __str__(self):
         out = "Initial error: {0:.4f}\nFinal error: {1:.4f}".format(
             self.initial_error(), self.final_error())
