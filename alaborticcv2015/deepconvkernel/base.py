@@ -87,8 +87,9 @@ def _extract_patches_from_grid(image, patch_shape=(7, 7), stride=(4, 4),
 
 
 def _extract_patches(images, extract=_extract_patches_from_grid,
-                     patch_shape=(7, 7), as_single_array=False, flatten=True,
-                     dtype=np.float32, verbose=False, level_str='', **kwargs):
+                     patch_shape=(7, 7), as_single_array=False,
+                     flatten=True, dtype=np.float32, verbose=False,
+                     level_str='', **kwargs):
     if verbose:
         level_str += 'Extracting patches '
     n_images = len(images)
@@ -100,6 +101,7 @@ def _extract_patches(images, extract=_extract_patches_from_grid,
                     level_str, progress_bar_str(j/n_images, show_bar=True)))
             ps = extract(i, patch_shape=patch_shape, dtype=dtype,
                          as_single_array=as_single_array, **kwargs)
+            patches.append(ps.reshape((-1,) + ps.shape[-3:]))
             if flatten:
                 patches += ps
             else:
@@ -107,21 +109,58 @@ def _extract_patches(images, extract=_extract_patches_from_grid,
     else:
         ps = extract(images[0], patch_shape=patch_shape, dtype=dtype,
                      as_single_array=as_single_array, **kwargs)
-        patches = np.empty((n_images,) + ps.shape)
-        patches[0] = ps
+        patches = ps
         for j, i in enumerate(images[1:]):
             if verbose:
                 print_dynamic('{}{}'.format(
                     level_str, progress_bar_str(j/n_images, show_bar=True)))
             ps = extract(i, patch_shape=patch_shape, dtype=dtype,
                          as_single_array=as_single_array, **kwargs)
-            patches[j+1] = ps
+            patches = np.concatenate((patches, ps), axis=0)
         if flatten:
             patches = np.reshape(patches, (-1,) + patches.shape[-3:])
     if verbose:
         print_dynamic('{}{}'.format(
             level_str, progress_bar_str(1, show_bar=True)))
     return patches
+
+
+# def _extract_patches(images, extract=_extract_patches_from_grid,
+#                      patch_shape=(7, 7), as_single_array=False, flatten=True,
+#                      dtype=np.float32, verbose=False, level_str='', **kwargs):
+#     if verbose:
+#         level_str += 'Extracting patches '
+#     n_images = len(images)
+#     if not as_single_array:
+#         patches = []
+#         for j, i in enumerate(images):
+#             if verbose:
+#                 print_dynamic('{}{}'.format(
+#                     level_str, progress_bar_str(j/n_images, show_bar=True)))
+#             ps = extract(i, patch_shape=patch_shape, dtype=dtype,
+#                          as_single_array=as_single_array, **kwargs)
+#             if flatten:
+#                 patches += ps
+#             else:
+#                 patches.append(ps)
+#     else:
+#         ps = extract(images[0], patch_shape=patch_shape, dtype=dtype,
+#                      as_single_array=as_single_array, **kwargs)
+#         patches = np.empty((n_images,) + ps.shape)
+#         patches[0] = ps
+#         for j, i in enumerate(images[1:]):
+#             if verbose:
+#                 print_dynamic('{}{}'.format(
+#                     level_str, progress_bar_str(j/n_images, show_bar=True)))
+#             ps = extract(i, patch_shape=patch_shape, dtype=dtype,
+#                          as_single_array=as_single_array, **kwargs)
+#             patches[j+1] = ps
+#         if flatten:
+#             patches = np.reshape(patches, (-1,) + patches.shape[-3:])
+#     if verbose:
+#         print_dynamic('{}{}'.format(
+#             level_str, progress_bar_str(1, show_bar=True)))
+#     return patches
 
 
 # TODO: should work for both images and ndarrays
@@ -341,7 +380,7 @@ def _kernel_response(x, compute_kernel, filters_shape, layer=None,
     fft_ext_c = fft_ext_kernel**0.5 * fft_ext_image
 
     # compute ifft of extended response
-    ext_c = ifft2(fft_ext_c)
+    ext_c = np.real(ifft2(fft_ext_c))
 
     if mode is 'full':
         return ext_c

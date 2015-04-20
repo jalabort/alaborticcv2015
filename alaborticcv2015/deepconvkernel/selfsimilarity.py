@@ -1,6 +1,6 @@
 from __future__ import division
 import warnings
-from menpo.feature import centralize
+from menpo.feature import normalize_norm
 from menpo.visualize import print_dynamic, progress_bar_str
 from alaborticcv2015.deepconvkernel.base import _parse_filters
 from .base import LearnableLDCN, _normalize_images
@@ -37,7 +37,8 @@ class SelfSimLDCN(LearnableLDCN):
     Self-Similarity Linear Deep Convolutional Network Class
     """
     def __init__(self, n_layers=3, architecture=3,
-                 normalize_patches=centralize, normalize_filters=None,
+                 normalize_patches=normalize_norm,
+                 normalize_filters=normalize_norm,
                  patch_shape=(7, 7),  mode='same', boundary='constant'):
         super(SelfSimLDCN, self).__init__(architecture=architecture,
                                           patch_shape=patch_shape,
@@ -61,6 +62,7 @@ class SelfSimLDCN(LearnableLDCN):
                     level_str = '  - '
             # extract patches/filters
             fs = extract_patches_func(images, string=level_str)
+
             if verbose:
                 string = level_str + 'Learning filters '
                 print_dynamic('{}{}'.format(
@@ -75,11 +77,12 @@ class SelfSimLDCN(LearnableLDCN):
             if verbose:
                 print_dynamic('{}{}'.format(
                     string, progress_bar_str(1, show_bar=True)))
-            if l != self.n_layers:
+            if l != self._n_layers-1:
                 # compute responses if not last layer
                 images = self.compute_filters_responses(
-                    images, fs, norm_func=self.normalize_filters, mode=self.mode,
-                    boundary=self.boundary, verbose=verbose, string=level_str)
+                    images, fs, norm_func=self.normalize_filters,
+                    mode=self.mode, boundary=self.boundary, verbose=verbose,
+                    string=level_str)
             if verbose:
                 print_dynamic('{}Done!\n'.format(level_str))
         self._filters = filters
