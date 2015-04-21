@@ -151,7 +151,7 @@ def _image_to_images(image):
 
 
 def _compute_filters_responses1(images, filters, norm_func=centralize,
-                                mode='sa', boundary='symmetric',
+                                mode='same', boundary='symmetric',
                                 verbose=False, string=''):
     if verbose:
         string += 'Computing Filter Responses '
@@ -215,6 +215,27 @@ def _compute_filters_responses3(images, filters, norm_func=centralize,
     return responses
 
 
+# def _network_response1(x, filters, norm_func=None, hidden_mode='same',
+#                        visible_mode='valid', boundary='symmetric'):
+#     limit = len(filters) - 1
+#     xs = [x]
+#     for j, fs in enumerate(filters):
+#         if norm_func:
+#             xs = _normalize_images(xs, norm_func=norm_func)
+#         nxs = []
+#         for x in xs:
+#             if j < limit:
+#                 x = fft_convolve2d(x, fs, mode=hidden_mode, boundary=boundary)
+#             else:
+#                 x = fft_convolve2d(x, fs, mode=visible_mode, boundary=boundary)
+#             nxs += _image_to_images(x)
+#         xs = nxs
+#     if isinstance(x, Image):
+#         return _images_to_image(xs)
+#     else:
+#         return np.asarray(xs).reshape((-1, x.shape[-2:]))
+
+
 def _network_response1(x, filters, norm_func=None, hidden_mode='same',
                        visible_mode='valid', boundary='symmetric'):
     limit = len(filters) - 1
@@ -224,11 +245,14 @@ def _network_response1(x, filters, norm_func=None, hidden_mode='same',
             xs = _normalize_images(xs, norm_func=norm_func)
         nxs = []
         for x in xs:
-            if j < limit:
-                x = fft_convolve2d(x, fs, mode=hidden_mode, boundary=boundary)
-            else:
-                x = fft_convolve2d(x, fs, mode=visible_mode, boundary=boundary)
-            nxs += _image_to_images(x)
+            for f in fs:
+                if j < limit:
+                    x_ = fft_convolve2d(x, f, mode=hidden_mode,
+                                        boundary=boundary)
+                else:
+                    x_ = fft_convolve2d(x, f, mode=visible_mode,
+                                        boundary=boundary)
+                nxs.append(x_)
         xs = nxs
     if isinstance(x, Image):
         return _images_to_image(xs)
@@ -330,12 +354,12 @@ def _kernel_response(x, compute_kernel, filters_shape, layer=None,
     ext_shape = x_shape + f_shape - 1
 
     # extend image
-    ext_x = x# #pad(x, ext_shape, boundary=boundary)
+    ext_x = pad(x, ext_shape, boundary=boundary)
     # compute extended image fft
     fft_ext_image = fft2(ext_x)
 
     # compute deep convolution kernel
-    fft_ext_kernel = compute_kernel(layer=layer, ext_shape=x_shape)
+    fft_ext_kernel = compute_kernel(layer=layer, ext_shape=ext_shape)
 
     # compute kernel extended response in Fourier domain
     fft_ext_c = fft_ext_kernel**0.5 * fft_ext_image
@@ -343,7 +367,6 @@ def _kernel_response(x, compute_kernel, filters_shape, layer=None,
     # compute ifft of extended response
     ext_c = np.real(ifft2(fft_ext_c))
 
-    mode = 'full'
     if mode is 'full':
         return ext_c
     elif mode is 'same':
@@ -438,7 +461,7 @@ class LinDeepConvNet(object):
                                      ext_shape=ext_shape)
 
     def network_response(self, image, layer=None, hidden_mode='same',
-                         visible_mode='full', boundary='symmetric'):
+                         visible_mode='same', boundary='symmetric'):
         layer = _check_layer(layer, self.n_layers)
         return self._network_response(image, self._filters[:layer+1],
                                       norm_func=self.normalize_filters,
@@ -446,7 +469,7 @@ class LinDeepConvNet(object):
                                       visible_mode=visible_mode,
                                       boundary=boundary)
 
-    def kernel_response(self, x, layer=None, mode='full',
+    def kernel_response(self, x, layer=None, mode='same',
                         boundary='symmetric'):
         return _kernel_response(x, self._compute_kernel, self.filters_shape,
                                 layer=layer, norm_func=self.normalize_filters,
@@ -479,10 +502,10 @@ class LearnableLDCN(LinDeepConvNet):
 
         def extract_patches_func(imgs, flatten=True, string=''):
             return _extract_patches(imgs, extract=_extract_patches_from_grid,
-                                   patch_shape=self.patch_shape,
-                                   stride=stride, as_single_array=True,
-                                   flatten=flatten, verbose=verbose,
-                                   level_str=string)
+                                    patch_shape=self.patch_shape,
+                                    stride=stride, as_single_array=True,
+                                    flatten=flatten, verbose=verbose,
+                                    level_str=string)
         self._learn_network(images, extract_patches_func, verbose=verbose,
                             **kwargs)
 
@@ -490,11 +513,11 @@ class LearnableLDCN(LinDeepConvNet):
                                      verbose=False, **kwargs):
         def extract_patches_func(imgs, flatten=True, string=''):
             return _extract_patches(imgs,
-                                   extract=_extract_patches_from_landmarks,
-                                   patch_shape=self.patch_shape, group=group,
-                                   label=label, as_single_array=True,
-                                   flatten=flatten, verbose=verbose,
-                                   level_str=string)
+                                    extract=_extract_patches_from_landmarks,
+                                    patch_shape=self.patch_shape, group=group,
+                                    label=label, as_single_array=True,
+                                    flatten=flatten, verbose=verbose,
+                                    level_str=string)
         self._learn_network(images, extract_patches_func, verbose=verbose,
                             **kwargs)
 
