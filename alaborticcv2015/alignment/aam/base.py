@@ -126,14 +126,13 @@ class GlobalAAM(AAM):
 class PartsAAM(AAM):
 
     def __init__(self, shape_models, appearance_models, reference_shape,
-                 parts_shape, features, norm_func, scales,
+                 parts_shape, features, normalize_parts, scales,
                  scale_shapes, scale_features):
-
         self.shape_models = shape_models
         self.appearance_models = appearance_models
         self.parts_shape = parts_shape
         self.features = features
-        self.norm_func = norm_func
+        self.normallize_parts = normalize_parts
         self.reference_shape = reference_shape
         self.scales = scales
         self.scale_shapes = scale_shapes

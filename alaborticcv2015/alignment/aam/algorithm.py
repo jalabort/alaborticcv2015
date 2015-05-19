@@ -236,7 +236,9 @@ class AAMAlgorithm(object):
 
 
 class ProjectOut(AAMAlgorithm):
-
+    r"""
+    Abstract Interface for Project-out AAM algorithms
+    """
     def __init__(self, aam_interface, appearance_model, transform,
                  eps=10**-5, **kwargs):
         # call super constructor
@@ -244,9 +246,7 @@ class ProjectOut(AAMAlgorithm):
             aam_interface, appearance_model, transform, eps, **kwargs)
 
     def project_out(self, J):
-        r"""
-        Project-out appearance bases from a particular vector or matrix
-        """
+        # project-out appearance bases from a particular vector or matrix
         return J - self.A_m.dot(self.pinv_A_m.dot(J))
 
     def run(self, image, initial_shape, gt_shape=None, max_iters=20,
@@ -296,20 +296,14 @@ class ProjectOut(AAMAlgorithm):
 
     @abc.abstractmethod
     def update_warp(self):
-        r"""
-        Update warp
-        """
         pass
 
 
 class PIC(ProjectOut):
     r"""
-    Project-out Inverse Compositional Gauss-Newton algorithm
+    Project-out Inverse Compositional (PIC) algorithm
     """
     def precompute(self):
-        r"""
-        Pre-compute PIC state
-        """
         # call super method
         super(PIC, self).precompute()
 
@@ -334,15 +328,15 @@ class PIC(ProjectOut):
             return -self.pinv_QJ_m.dot(self.e_m)
 
     def update_warp(self):
-        r"""
-        Update warp based on Inverse Composition
-        """
+        # update warp based on inverse composition
         self.transform.from_vector_inplace(
             self.transform.as_vector() - self.dp)
 
 
 class Alternating(AAMAlgorithm):
-
+    r"""
+    Abstract Interface for Alternating AAM algorithms
+    """
     def __init__(self, aam_interface, appearance_model, transform,
                  eps=10**-5, **kwargs):
         # call super constructor
@@ -353,9 +347,6 @@ class Alternating(AAMAlgorithm):
         self.precompute()
 
     def precompute(self, **kwargs):
-        r"""
-        Pre-compute common state for Alternating algorithms
-        """
         # call super method
         super(Alternating, self).precompute()
 
@@ -363,9 +354,6 @@ class Alternating(AAMAlgorithm):
 
     def run(self, image, initial_shape, gt_shape=None, max_iters=20,
             map_inference=False):
-        r"""
-        Run Alternating AAM algorithms
-        """
         # initialize transform
         self.transform.set_target(initial_shape)
         p_list = [self.transform.as_vector()]
@@ -438,35 +426,24 @@ class Alternating(AAMAlgorithm):
 
     @abc.abstractmethod
     def compute_jacobian(self):
-        r"""
-        Compute Jacobian
-        """
         pass
 
     @abc.abstractmethod
     def update_warp(self):
-        r"""
-        Update warp
-        """
         pass
 
 
 class AIC(Alternating):
     r"""
-    Simultaneous Inverse Compositional Gauss-Newton algorithm
+    Simultaneous Inverse Compositional (AIC) algorithm
     """
     def compute_jacobian(self):
-        r"""
-        Compute Inverse Jacobian
-        """
         # compute warped appearance model gradient
         nabla_a = self.interface.gradient(self.a)
         # return inverse Jacobian
         return self.interface.steepest_descent_images(-nabla_a, self.dW_dp)
 
     def update_warp(self):
-        r"""
-        Update warp based on Inverse Composition
-        """
+        # update warp based on inverse composition
         self.transform.from_vector_inplace(
             self.transform.as_vector() - self.dp)

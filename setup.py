@@ -4,7 +4,7 @@ import numpy as np
 include_dirs = [np.get_include()]
 
 requirements = ['menpo>=0.4.1',
-                'menpofit>=0.1.0']
+                'menpofit>=0.0.1']
 
 setup(name='alaborticcv2015',
       version='0.0.1',
